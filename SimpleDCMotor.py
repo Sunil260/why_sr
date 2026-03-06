@@ -40,7 +40,7 @@ if __name__ == "__main__":
     right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
 
     try:
-        left.set(0.5); right.set(0.5)
+        left.set(-0.5); right.set(-0.5)
         sleep(5)
         print("WAGWAN delilah")
     finally:
