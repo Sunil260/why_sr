@@ -53,10 +53,10 @@ red_upper2 = np.array([180,255,255])
 
 # ---------------- PURE PURSUIT PARAMETERS ----------------
 
-lookahead_y = 300
-Ld = 150
-base_speed = 0.4
-wheelbase = 0.15
+lookahead_y = 320
+Ld = 120
+base_speed = 0.25
+wheelbase = 0.165
 
 # ---------------- MAIN LOOP ----------------
 
