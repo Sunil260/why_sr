@@ -45,7 +45,10 @@ class RedLineDetector:
             return False, 0.0, 0.0, frame, mask
 
         pts = c.reshape(-1, 2).astype(np.float32)
-        vx, vy, x0_fit, y0_fit = cv.fitLine(pts, cv.DIST_L2, 0, 0.01, 0.01)
+        line = cv.fitLine(pts, cv.DIST_L2, 0, 0.01, 0.01)
+
+        
+        vx, vy, x0_fit, y0_fit = line.flatten()
         vx, vy, x0_fit, y0_fit = float(vx), float(vy), float(x0_fit), float(y0_fit)
 
         angle = np.arctan2(vy, vx)
