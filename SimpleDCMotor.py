@@ -35,14 +35,56 @@ class DCMotorL298:
             self.in1.on(); self.in2.on()
 
 # ---- quick test ----
+# if __name__ == "__main__":
+#     left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
+#     right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
+
+#     try:
+#         left.set(-0.5); right.set(-0.5)
+#         sleep(5)
+#     finally:
+#         left.stop()
+#         right.stop()
+
+# ---- quick test ----
 if __name__ == "__main__":
-    left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
-    right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
+    left  = DCMotorL298(in1=17, in2=27, en_pwm=19)
+    right = DCMotorL298(in1=22, in2=23, en_pwm=13)
 
     try:
-        left.set(-0.5); right.set(-0.5)
-        sleep(5)
-        print("WAGWAN delilah")
+        step = 0.05
+        delay = 0.1
+
+        # Ramp up forward
+        for s in [i * step for i in range(0, int(0.8/step) + 1)]:
+            left.set(s)
+            right.set(s)
+            sleep(delay)
+
+        sleep(1)
+
+        # Ramp down to stop
+        for s in [i * step for i in range(int(0.8/step), -1, -1)]:
+            left.set(s)
+            right.set(s)
+            sleep(delay)
+
+        sleep(1)
+
+        # Ramp up reverse
+        for s in [-(i * step) for i in range(0, int(0.8/step) + 1)]:
+            left.set(s)
+            right.set(s)
+            sleep(delay)
+
+        sleep(1)
+
+        # Ramp back to stop
+        for s in [-(i * step) for i in range(int(0.8/step), -1, -1)]:
+            left.set(s)
+            right.set(s)
+            sleep(delay)
+
     finally:
         left.stop()
         right.stop()
