@@ -2,7 +2,7 @@ from gpiozero import DigitalOutputDevice, PWMOutputDevice
 from time import sleep
 
 class DCMotorL298:
-    def __init__(self, in1, in2, en_pwm, pwm_freq=20000):
+    def __init__(self, in1, in2, en_pwm, pwm_freq=1000):
         self.in1 = DigitalOutputDevice(in1)
         self.in2 = DigitalOutputDevice(in2)
         self.en  = PWMOutputDevice(en_pwm, frequency=pwm_freq)
@@ -40,8 +40,9 @@ if __name__ == "__main__":
     right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
 
     try:
-        left.set(0.3); right.set(0.3)
-        sleep(2)
+        left.set(0.5); right.set(0.5)
+        sleep(5)
+        print("WAGWAN delilah")
     finally:
         left.stop()
         right.stop()
