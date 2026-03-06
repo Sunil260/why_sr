@@ -11,7 +11,7 @@ class ContinuousServoPWM:
 
     PERIOD_US = 20000  # 50 Hz => 20 ms period
 
-    def __init__(self, pwm_channel=2, chip=0, center_us=1500, hz=50, min_us=1000, max_us=2000):
+    def __init__(self, pwm_channel=2, chip=0, center_us=1570, hz=50, min_us=1000, max_us=2000):
         self.center_us = int(center_us)
         self.min_us = int(min_us)
         self.max_us = int(max_us)
@@ -61,11 +61,13 @@ if __name__ == "__main__":
         servo.stop()
         time.sleep(1)
 
-        servo.cw(1.0, delta_us=150)   # try 100–300
+
+        servo.ccw(0.55, delta_us=100)
         time.sleep(0.5)
 
-        servo.ccw(1.0, delta_us=150)
+        servo.cw(0.55, delta_us=100)   # try 100–300
         time.sleep(0.5)
+
 
         servo.stop()
         time.sleep(2)
