@@ -61,13 +61,11 @@ if __name__ == "__main__":
         servo.stop()
         time.sleep(1)
 
-
         servo.ccw(0.55, delta_us=100)
         time.sleep(0.5)
 
-        servo.cw(0.55, delta_us=100)   # try 100–300
+        servo.cw(0.55, delta_us=100) 
         time.sleep(0.5)
-
 
         servo.stop()
         time.sleep(2)
