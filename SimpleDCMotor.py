@@ -8,7 +8,7 @@ class DCMotorL298:
         self.en  = PWMOutputDevice(en_pwm, frequency=pwm_freq)
         self.stop(coast=True)
 
-    def set(self, speed):
+    def set(self, speed): #setting speed for forward and reverse
         """
         speed in [-1.0, 1.0]
         + = forward, - = reverse
@@ -34,6 +34,22 @@ class DCMotorL298:
             # brake (often both high; depends on driver/board)
             self.in1.on(); self.in2.on()
 
+
+class DifferentialDrive:
+    #currently wired so that set(positive) = forward, set(negative) = reverse for both motors
+    def __init__(self, left_motor, right_motor):
+        self.L = left_motor
+        self.R = right_motor
+
+    def drive(self, left_cmd, right_cmd):
+        self.L.set(left_cmd)
+        self.R.set(right_cmd)
+
+    def stop(self):
+        self.L.stop()
+        self.R.stop()
+
+    
 # ---- quick test ----
 # if __name__ == "__main__":
 #     left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
@@ -55,34 +71,34 @@ if __name__ == "__main__":
         step = 0.05
         delay = 0.1
 
-        # Ramp up forward
+# ramp forward
         for s in [i * step for i in range(0, int(0.8/step) + 1)]:
-            left.set(s)
-            right.set(s)
-            sleep(delay)
+            left.set(s) #forward left motor
+            right.set(s) #forward right motor
+            sleep(delay) #duration of speed step
 
         sleep(1)
 
-        # Ramp down to stop
+# ramp down 
         for s in [i * step for i in range(int(0.8/step), -1, -1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #forward left motor
+            right.set(s) #forward right motor
             sleep(delay)
 
         sleep(1)
 
-        # Ramp up reverse
+# ramp reverse
         for s in [-(i * step) for i in range(0, int(0.8/step) + 1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #backward left motor
+            right.set(s) #backward right motor
             sleep(delay)
 
         sleep(1)
 
-        # Ramp back to stop
+# ramp down
         for s in [-(i * step) for i in range(int(0.8/step), -1, -1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #backward left moror
+            right.set(s) #backward right motor
             sleep(delay)
 
     finally:
