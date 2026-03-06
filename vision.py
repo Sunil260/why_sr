@@ -1,72 +1,101 @@
-
+import time
 import cv2 as cv
 import numpy as np
 
-def detect_red_line():
-    # Initialize webcam
-    cap = cv.VideoCapture(0)
+class RedLineDetector:
+    def __init__(self, cam_index=0, w=640, h=480, roi_height=220):
+        self.cap = cv.VideoCapture(cam_index)
+        self.cap.set(cv.CAP_PROP_FRAME_WIDTH,  w)
+        self.cap.set(cv.CAP_PROP_FRAME_HEIGHT, h)
+        self.cap.set(cv.CAP_PROP_FPS, 30)
 
-    # [*1] Set resolution
-    cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)  # Set width to 640 pixels
-    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)  # Set height to 480 pixels
+        self.w, self.h = w, h
+        self.roi_height = roi_height
 
-    # [*2] Set frame rate
-    cap.set(cv.CAP_PROP_FPS, 30)  # Set to 30 frames per second
+        self.red_lower1 = np.array([0, 100, 100])
+        self.red_upper1 = np.array([10, 255, 255])
+        self.red_lower2 = np.array([160, 100, 100])
+        self.red_upper2 = np.array([180, 255, 255])
 
-    # [*3] Define HSV range for red color
-    red_lower = np.array([0, 100, 100])
-    red_upper = np.array([10, 255, 255])
-    red_lower_2 = np.array([160, 100, 100])
-    red_upper_2 = np.array([180, 255, 255])
-
-    while True:
-        # Capture frame
-        ret, frame = cap.read()
+    def read_pose(self):
+        ret, frame = self.cap.read()
         if not ret:
-            print("Failed to capture frame")
-            break
+            return False, 0.0, 0.0, None, None
 
-        # Resize frame for consistency
-        frame = cv.resize(frame, (480, 480))
+        frame = cv.resize(frame, (self.w, self.h))
 
-        # Convert to HSV color space
-        hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+        y0 = self.h - self.roi_height
+        roi = frame[y0:self.h, :]
 
-        # Create masks for red color
-        mask1 = cv.inRange(hsv, red_lower, red_upper)
-        mask2 = cv.inRange(hsv, red_lower_2, red_upper_2)
-        mask = cv.bitwise_or(mask1, mask2)
+        hsv = cv.cvtColor(roi, cv.COLOR_BGR2HSV)
+        m1 = cv.inRange(hsv, self.red_lower1, self.red_upper1)
+        m2 = cv.inRange(hsv, self.red_lower2, self.red_upper2)
+        mask = cv.bitwise_or(m1, m2)
 
-        # Apply mask to isolate red regions
-        red_regions = cv.bitwise_and(frame, frame, mask=mask)
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel, iterations=1)
+        mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, kernel, iterations=2)
 
-        # Convert the mask to grayscale for edge detection
-        gray = cv.cvtColor(red_regions, cv.COLOR_BGR2GRAY)
+        contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return False, 0.0, 0.0, frame, mask
 
-        # [*4] Apply Canny edge detection
-        edges = cv.Canny(gray, 50, 150)
+        c = max(contours, key=cv.contourArea)
+        if cv.contourArea(c) < 200:
+            return False, 0.0, 0.0, frame, mask
 
-        # [*5] Use HoughLinesP to detect line segments
-        lines = cv.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=50, maxLineGap=10)
+        pts = c.reshape(-1, 2).astype(np.float32)
+        vx, vy, x0_fit, y0_fit = cv.fitLine(pts, cv.DIST_L2, 0, 0.01, 0.01)
+        vx, vy, x0_fit, y0_fit = float(vx), float(vy), float(x0_fit), float(y0_fit)
 
-        # Draw the detected lines on the original frame
-        if lines is not None:
-            print("Red line detected")
-            for line in lines:
-                x1, y1, x2, y2 = line[0]  # Unpack line endpoints
-                cv.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Draw line in green
+        angle = np.arctan2(vy, vx)
+        theta_e = angle - (np.pi / 2)
+        theta_e = (theta_e + np.pi) % (2*np.pi) - np.pi
+
+        y_target = self.roi_height - 1
+        if abs(vy) < 1e-6:
+            x_at_bottom = x0_fit
         else:
-            print("No red line detected")
+            t = (y_target - y0_fit) / vy
+            x_at_bottom = x0_fit + t * vx
 
-        # Display the original frame with detected lines
-        cv.imshow('Red Line Detection', frame)
+        center_x = self.w / 2
+        e_px = x_at_bottom - center_x
+        e_norm = float(e_px / center_x)
 
-        # Break loop on user interrupt (e.g., 'q' key press)
-        if cv.waitKey(1) & 0xFF == ord('q'):
-            break
+        return True, e_norm, theta_e, frame, mask
 
-    cap.release()
-    cv.destroyAllWindows()
+    def release(self):
+        self.cap.release()
 
-# Run the function
-detect_red_line()
+
+def ascii_mask(mask, width=64, height=24):
+    """Terminal preview of a binary mask."""
+    small = cv.resize(mask, (width, height), interpolation=cv.INTER_AREA)
+    on = small > 0
+    return "\n".join(
+        "".join("#" if on[y, x] else " " for x in range(width))
+        for y in range(height)
+    )
+
+
+if __name__ == "__main__":
+    det = RedLineDetector(cam_index=0, w=640, h=480, roi_height=220)
+    last_print = 0.0
+
+    try:
+        while True:
+            found, e_norm, theta_e, _, mask = det.read_pose()
+
+            now = time.time()
+            if now - last_print > 0.2 and mask is not None:  # ~5 Hz
+                last_print = now
+                print("\x1b[2J\x1b[H", end="")  # clear screen
+                print(ascii_mask(mask, 64, 24))
+                if found:
+                    print(f"\nFOUND  e_norm={e_norm:+.3f}  theta_e={theta_e:+.3f} rad")
+                else:
+                    print("\nNOT FOUND")
+
+    finally:
+        det.release()
