@@ -8,7 +8,7 @@ class DCMotorL298:
         self.en  = PWMOutputDevice(en_pwm, frequency=pwm_freq)
         self.stop(coast=True)
 
-    def set(self, speed):
+    def set(self, speed): #setting speed for forward and reverse
         """
         speed in [-1.0, 1.0]
         + = forward, - = reverse
@@ -71,34 +71,34 @@ if __name__ == "__main__":
         step = 0.05
         delay = 0.1
 
-        # Ramp up forward
+# ramp forward
         for s in [i * step for i in range(0, int(0.8/step) + 1)]:
-            left.set(s)
-            right.set(s)
-            sleep(delay)
+            left.set(s) #forward left motor
+            right.set(s) #forward right motor
+            sleep(delay) #duration of speed step
 
         sleep(1)
 
-        # Ramp down to stop
+# ramp down 
         for s in [i * step for i in range(int(0.8/step), -1, -1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #forward left motor
+            right.set(s) #forward right motor
             sleep(delay)
 
         sleep(1)
 
-        # Ramp up reverse
+# ramp reverse
         for s in [-(i * step) for i in range(0, int(0.8/step) + 1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #backward left motor
+            right.set(s) #backward right motor
             sleep(delay)
 
         sleep(1)
 
-        # Ramp back to stop
+# ramp down
         for s in [-(i * step) for i in range(int(0.8/step), -1, -1)]:
-            left.set(s)
-            right.set(s)
+            left.set(s) #backward left moror
+            right.set(s) #backward right motor
             sleep(delay)
 
     finally:
