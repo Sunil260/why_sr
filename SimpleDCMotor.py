@@ -34,6 +34,22 @@ class DCMotorL298:
             # brake (often both high; depends on driver/board)
             self.in1.on(); self.in2.on()
 
+
+class DifferentialDrive:
+    #currently wired so that set(positive) = forward, set(negative) = reverse for both motors
+    def __init__(self, left_motor, right_motor):
+        self.L = left_motor
+        self.R = right_motor
+
+    def drive(self, left_cmd, right_cmd):
+        self.L.set(left_cmd)
+        self.R.set(right_cmd)
+
+    def stop(self):
+        self.L.stop()
+        self.R.stop()
+
+    
 # ---- quick test ----
 # if __name__ == "__main__":
 #     left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
