@@ -1,28 +1,74 @@
-from rpi_hardware_pwm import HardwarePWM
 import time
+from rpi_hardware_pwm import HardwarePWM
 
-# Pi 5: GPIO18 => pwm_channel=2 with dtoverlay=pwm-2chan
-pwm = HardwarePWM(pwm_channel=2, hz=50, chip=0)
+class ContinuousServoPWM:
+    """
+    Continuous rotation servo controlled by pulse width (microseconds).
 
-def set_pulse_us(pulse_us: int):
-    duty = (pulse_us / 20000.0) * 100.0  # 50Hz => 20ms => 20000us
-    pwm.change_duty_cycle(duty)
+    center_us: pulse at stop (often 1500us, but yours might be 1570us)
+    delta_us: how far from center to drive (bigger = faster)
+    """
 
-CENTER_US = 1570  # your calibrated stop
+    PERIOD_US = 20000  # 50 Hz => 20 ms period
 
-try:
-    pwm.start((CENTER_US / 20000.0) * 100.0)  # start at center
+    def __init__(self, pwm_channel=2, chip=0, center_us=1500, hz=50, min_us=1000, max_us=2000):
+        self.center_us = int(center_us)
+        self.min_us = int(min_us)
+        self.max_us = int(max_us)
 
-    # test motion
-    set_pulse_us(CENTER_US + 100)  # one direction
-    time.sleep(1)
-    set_pulse_us(CENTER_US)        # stop
-    time.sleep(0.5)
+        self.pwm = HardwarePWM(pwm_channel=pwm_channel, hz=hz, chip=chip)
+        self.pwm.start(self._duty_from_us(self.center_us))  # start at stop
 
-    set_pulse_us(CENTER_US - 100)  # other direction
-    time.sleep(1)
-    set_pulse_us(CENTER_US)        # stop
-    time.sleep(0.5)
+    def _clamp_us(self, us: int) -> int:
+        return max(self.min_us, min(self.max_us, int(us)))
 
-finally:
-    pwm.stop()
+    def _duty_from_us(self, pulse_us: int) -> float:
+        pulse_us = self._clamp_us(pulse_us)
+        return (pulse_us / self.PERIOD_US) * 100.0
+
+    def set_pulse_us(self, pulse_us: int):
+        """Send an absolute pulse width in microseconds."""
+        self.pwm.change_duty_cycle(self._duty_from_us(pulse_us))
+
+    def stop(self):
+        """Stop motion by continuously commanding the center pulse."""
+        self.set_pulse_us(self.center_us)
+
+    def cw(self, duration_s: float, delta_us: int = 200):
+        """Rotate CW for duration, then stop. (CW/CCW depends on servo wiring/model.)"""
+        self.set_pulse_us(self.center_us + abs(int(delta_us)))
+        time.sleep(float(duration_s))
+        self.stop()
+
+    def ccw(self, duration_s: float, delta_us: int = 200):
+        """Rotate CCW for duration, then stop."""
+        self.set_pulse_us(self.center_us - abs(int(delta_us)))
+        time.sleep(float(duration_s))
+        self.stop()
+
+    def close(self):
+        """Hold stop briefly, then stop PWM output."""
+        self.stop()
+        time.sleep(0.2)   # helps prevent an exit twitch
+        self.pwm.stop()
+
+
+if __name__ == "__main__":
+    # GPIO18 on Pi 5 commonly maps to pwm_channel=2 for this library.
+    servo = ContinuousServoPWM(pwm_channel=2, chip=0, center_us=1500)
+
+    try:
+        servo.stop()
+        time.sleep(1)
+
+        servo.cw(1.0, delta_us=150)   # try 100–300
+        time.sleep(0.5)
+
+        servo.ccw(1.0, delta_us=150)
+        time.sleep(0.5)
+
+        servo.stop()
+        time.sleep(2)
+
+    finally:
+        servo.close()
