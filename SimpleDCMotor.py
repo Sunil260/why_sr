@@ -36,17 +36,11 @@ class DCMotorL298:
 
 # ---- quick test ----
 if __name__ == "__main__":
-    left  = DCMotorL298(in1=17, in2=27, en_pwm=18)  # example pins
-    right = DCMotorL298(in1=22, in2=23, en_pwm=13)  # example pins
+    left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
+    right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
 
     try:
         left.set(0.3); right.set(0.3)
-        sleep(2)
-        left.set(0.6); right.set(0.6)
-        sleep(2)
-        left.set(0.0); right.set(0.0)
-        sleep(1)
-        left.set(-0.3); right.set(-0.3)
         sleep(2)
     finally:
         left.stop()
