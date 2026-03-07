@@ -53,10 +53,10 @@ red_upper2 = np.array([180,255,255])
 
 # ---------------- PURE PURSUIT PARAMETERS ----------------
 
-lookahead_y = 320
-Ld = 120
+lookahead_y = 200
+Ld = 10
 base_speed = 0.25
-wheelbase = 0.165
+wheelbase = 0.196
 
 # ---------------- MAIN LOOP ----------------
 
@@ -86,9 +86,11 @@ while True:
 
         center_x = frame.shape[1] // 2
         error = target_x - center_x
+        print(error)
 
         # PURE PURSUIT CURVATURE
         kappa = 2 * error / (Ld * Ld)
+        print(kappa)
 
         # WHEEL SPEEDS
         left_speed  = base_speed * (1 - kappa * wheelbase/2)
@@ -105,8 +107,8 @@ while True:
         left.stop()
         right.stop()
 
-    cv.imshow("frame",frame)
-    cv.imshow("mask",mask)
+    # cv.imshow("frame",frame)
+    # cv.imshow("mask",mask)
 
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
