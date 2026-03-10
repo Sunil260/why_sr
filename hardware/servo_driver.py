@@ -1,13 +1,20 @@
+'''
+Continuous rotation servo controlled by pulse width (microseconds).
+    using rpi_hardware_pwm library for more precise timing than software PWM. (config.txt -> dtoverlay=pwm-2chan)
+    center_us: pulse at stop (usually 1500us, but saw 1570us)
+    delta_us: how far from center to drive (bigger = faster)
+methods:
+    - set_pulse_us(pulse_us): Send an absolute pulse width in microseconds.
+    - stop(): Stop motion by continuously commanding the center pulse.
+    - cw(duration_s, delta_us): Rotate CW for duration, then stop. (CW/CCW depends on servo wiring/model.)
+    - ccw(duration_s, delta_us): Rotate CCW for duration, then stop.
+    - close(): Hold stop briefly, then stop PWM output
+note: close and stop are different - close should be called when done with the servo to prevent an exit twitch, while stop just commands a stop pulse but keeps PWM running.
+'''
 import time
 from rpi_hardware_pwm import HardwarePWM
 
 class ContinuousServoPWM:
-    """
-    Continuous rotation servo controlled by pulse width (microseconds).
-
-    center_us: pulse at stop (often 1500us, but yours might be 1570us)
-    delta_us: how far from center to drive (bigger = faster)
-    """
 
     PERIOD_US = 20000  # 50 Hz => 20 ms period
 

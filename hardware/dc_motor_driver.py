@@ -1,6 +1,8 @@
 from gpiozero import DigitalOutputDevice, PWMOutputDevice
 from time import sleep
 
+#class to drive a dcmotor via a L298N H-bridge driver board
+
 class DCMotorL298:
     def __init__(self, in1, in2, en_pwm, pwm_freq=1000):
         self.in1 = DigitalOutputDevice(in1)
@@ -23,47 +25,19 @@ class DCMotorL298:
             self.en.value = -speed
         else:
             self.en.value = 0
-            # keep direction pins as-is (or call stop)
+            # coast
 
     def stop(self, coast=True):
         self.en.value = 0
         if coast:
-            # both low = coast on many H-bridges
-            self.in1.off(); self.in2.off()
+            # en_pin = low
+            self.in1.off(); self.in2.off(); self.en.value = 0
         else:
-            # brake (often both high; depends on driver/board)
+            # both in are equal (high or low) for brake
             self.in1.on(); self.in2.on()
 
-
-class DifferentialDrive:
-    #currently wired so that set(positive) = forward, set(negative) = reverse for both motors
-    def __init__(self, left_motor, right_motor):
-        self.L = left_motor
-        self.R = right_motor
-
-    def drive(self, left_cmd, right_cmd):
-        self.L.set(left_cmd)
-        self.R.set(right_cmd)
-
-    def stop(self):
-        self.L.stop()
-        self.R.stop()
-
-    
-# ---- quick test ----
-# if __name__ == "__main__":
-#     left  = DCMotorL298(in1=17, in2=27, en_pwm=19) 
-#     right = DCMotorL298(in1=22, in2=23, en_pwm=13)  
-
-#     try:
-#         left.set(-0.5); right.set(-0.5)
-#         sleep(5)
-#     finally:
-#         left.stop()
-#         right.stop()
-
-# ---- quick test ----
 if __name__ == "__main__":
+    #Test for DCMotorL298 and DifferentialDrive
     left  = DCMotorL298(in1=17, in2=27, en_pwm=19)
     right = DCMotorL298(in1=22, in2=23, en_pwm=13)
 
