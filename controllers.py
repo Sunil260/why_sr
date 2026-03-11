@@ -17,14 +17,14 @@ class DriveCommand:
     v: float
     omega: float
 
-@dataclass 
-class SafeZoneEstimate:
+
+@dataclass
+class LineEstimate:
     detected: bool
-    centroid_x: float
-    error_x: float
-    error_y: float
-    area: float
-    # confidence: float
+    x_error_center: float
+    x_error_ahead: float
+    heading_error_ahead: float
+
 
 @dataclass
 class TargetEstimate:
@@ -34,60 +34,118 @@ class TargetEstimate:
     error_x: float
     error_y: float
     area: float
-    # distance_error: float
-    # confidence: float
-    
-@dataclass
-class LineEstimate:
-    detected: bool
-    x_error_center: float #px
-    x_error_ahead: float #px
-    heading_error_ahead: float #rads
-    # confidence: float
 
+
+@dataclass
+class SafeZoneEstimate:
+    detected: bool
+    centroid_x: float
+    error_x: float
+    error_y: float
+    area: float
+ 
 
 class BaseController:
     def compute(self, estimate, dt):
         raise NotImplementedError
 
-class LineFollowingController(BaseController):
-    def __init__(self):
-        pass
 
-    def compute(self, heading_error, lateral_error):
-       
-       # simple PD controller for line following
-       # the perception module -> x_error_center: float #px, x_error_ahead: float #px, heading_error_ahead: float #rads
-       # 
+class PDController:
+    def __init__(self, kp: float, kd: float):
+        self.kp = kp
+        self.kd = kd
+        self.prev_error = 0.0
+        self.first_update = True
+
+    def reset(self):
+        self.prev_error = 0.0
+        self.first_update = True
+
+    def compute(self, error: float, dt: float) -> float:
+        if dt <= 1e-6:
+            dt = 1e-6
+
+        if self.first_update:
+            d_error = 0.0
+            self.first_update = False
+        else:
+            d_error = (error - self.prev_error) / dt
+
+        self.prev_error = error
+        return self.kp * error + self.kd * d_error
     
-        Kp_heading = 1.0
-        Kd_heading = 0.1
+    def update_params(self, kp = None, kd = None):
+        if kp is not None:
+            self.kp = kp
+        if kd is not None:
+            self.kd = kd
 
-        Kp_lateral = 0.5
-        Kd_lateral = 0.05
+class LineFollowingController(BaseController):
+    def __init__(self, k_heading_slow=1.0, v_min=0.0, v_max=0.4, omega_max=2.0):
+        self.lateral_pd = PDController(kp=0.5, kd=0.05)
+        self.k_heading_slow = k_heading_slow
+        self.v_min = v_min
+        self.v_max = v_max
+        self.omega_max = omega_max
 
-        pass
+    def compute(self, estimate: LineEstimate, dt: float, base_speed: float = 0.25):
+        if not estimate.detected:
+            return DriveCommand(v=0.0, omega=0.0)
 
+        lateral_error = estimate.x_error_center
+        heading_error = estimate.heading_error_ahead
+
+        omega = self.lateral_pd.compute(lateral_error, dt)
+        v = base_speed - self.k_heading_slow * abs(heading_error)
+
+        v = max(self.v_min, min(self.v_max, v))
+        omega = max(-self.omega_max, min(self.omega_max, omega))
+
+        return DriveCommand(v=v, omega=omega)
+    
 class AlignmentController(BaseController):
-    def __init__(self):
-        pass
+    def __init__(self, omega_max=1.5, x_tol=10.0):
+        self.align_pd = PDController(kp=0.01, kd=0.001)
+        self.omega_max = omega_max
+        self.x_tol = x_tol
 
-    def compute(self, target_estimate, dt):
-        # simple P controller to align with the target (lego
-        pass
+    def compute(self, estimate: TargetEstimate, dt: float):
+        if not estimate.detected:
+            return DriveCommand(v=0.0, omega=0.0)
+
+        if abs(estimate.error_x) < self.x_tol:
+            return DriveCommand(v=0.0, omega=0.0)
+
+        omega = self.align_pd.compute(estimate.error_x, dt)
+        omega = max(-self.omega_max, min(self.omega_max, omega))
+        return DriveCommand(v=0.0, omega=omega)
 
 class ApproachController(BaseController):
-    def __init__(self):
-        pass
+    def __init__(self, omega_max=1.5, v_max=0.25):
+        self.heading_pd = PDController(kp=0.01, kd=0.001)
+        self.omega_max = omega_max
+        self.v_max = v_max
 
-    def compute(self, target_estimate, dt):
-        # simple P controller to approach the target
-        pass
+    def compute(self, estimate: TargetEstimate, dt: float):
+        if not estimate.detected:
+            return DriveCommand(v=0.0, omega=0.0)
 
+        omega = self.heading_pd.compute(estimate.error_x, dt)
+
+        # Example: smaller detected area -> farther away -> move faster
+        v = 0.15
+        if estimate.area > 0:
+            v = max(0.0, min(self.v_max, 0.25 - 0.0005 * estimate.area))
+
+        omega = max(-self.omega_max, min(self.omega_max, omega))
+        return DriveCommand(v=v, omega=omega)
+    
 class TurnUntilLineController(BaseController):
-    def __init__(self):
-        pass
+    def __init__(self, search_omega=0.8):
+        self.search_omega = search_omega
 
-    def compute(self, line_estimate, dt):
-        # simple P controller to turn until the line is detected
-        pass
+    def compute(self, estimate: LineEstimate, dt: float):
+        if estimate.detected:
+            return DriveCommand(v=0.0, omega=0.0)
+
+        return DriveCommand(v=0.0, omega=self.search_omega)

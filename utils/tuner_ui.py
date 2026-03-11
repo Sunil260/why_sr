@@ -1,3 +1,5 @@
+'''Tuner UI for live PID parameter adjustment and performance visualization.'''
+
 from fasthtml.common import *
 import pandas as pd
 import plotly.express as px
