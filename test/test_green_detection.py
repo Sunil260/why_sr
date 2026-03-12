@@ -20,7 +20,7 @@ while True:
             f"Green box detected | area={res.area:.0f} error_x={res.error_x}"
         )
 
-    cv2.imshow("Green Box Test", frame)
+    # cv2.imshow("Green Box Test", frame)
 
     if cv2.waitKey(1) == ord("q"):
         break
