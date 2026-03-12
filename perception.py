@@ -41,7 +41,7 @@ class LineEstimate:
     # confidence: float
 
 class OpenCVCamera:
-    def __init__(self, camera_index=0, width=640, height=480, focal_length_px=768.0):
+    def __init__(self, camera_index=20, width=640, height=480, focal_length_px=768.0):
         self.cap = cv.VideoCapture(camera_index)
         self.cap.set(cv.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
