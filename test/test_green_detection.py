@@ -1,5 +1,10 @@
 import cv2
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from perception import OpenCVCamera, Perception
+
 
 cam = OpenCVCamera()
 p = Perception(cam)
