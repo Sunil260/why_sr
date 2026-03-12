@@ -22,8 +22,8 @@ while True:
 
     # cv2.imshow("Green Box Test", frame)
 
-    if cv2.waitKey(1) == ord("q"):
-        break
+    # if cv2.waitKey(1) == ord("q"):
+    #     break
 
 cam.release()
 cv2.destroyAllWindows()
