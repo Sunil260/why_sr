@@ -1,4 +1,6 @@
 import cv2
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from perception import OpenCVCamera, Perception
 
 cam = OpenCVCamera()
@@ -27,4 +29,4 @@ while True:
         break
 
 cam.release()
-cv2.destroyAllWindows()s
+cv2.destroyAllWindows()
