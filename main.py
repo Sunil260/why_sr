@@ -1,7 +1,7 @@
 
 import time
 from PID import PID
-from DCMotor import DCMotor
+from hardware.dc_motor_driver import DCMotorL298
 # (Assuming VelocityRamp is in its own file or top of main)
 
 # Configuration
@@ -10,8 +10,8 @@ ACCEL_RATE = 0.2      # m/s^2 (Takes 1.5 seconds to reach 0.3m/s)
 DT = 0.05             # 20Hz Loop
 
 # Init Hardware & Controllers
-motor_l = DCMotor(17, 27, 12, 24, 25)
-motor_r = DCMotor(22, 23, 13, 5, 6)
+motor_l = DCMotorL298(17, 27, 12)
+motor_r = DCMotorL298(22, 23, 13)
 
 pid_l = PID(kp=0.6, ki=0.3, kd=0.02) # Adjusted Kp for smoother pickup
 pid_r = PID(kp=0.6, ki=0.3, kd=0.02)
