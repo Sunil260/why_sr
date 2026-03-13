@@ -6,12 +6,12 @@ from manipulator import Claw
 
 claw = Claw()
 
-print("Opening claw")
+print("Closing claw")
 claw.open()
 
 time.sleep(2)
 
-print("Closing claw")
+print("Opening claw")
 claw.close()
 
 time.sleep(2)
