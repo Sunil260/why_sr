@@ -236,6 +236,8 @@ class Perception:
 
         if not blue_countours:
             return no_res
+        if not red_countours:
+            return no_res
         
         blue_c = max(blue_countours, key=cv.contourArea)
         red_c = max(red_countours, key=cv.contourArea)
