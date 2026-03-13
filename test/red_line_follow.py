@@ -39,7 +39,7 @@ def main():
                 time.sleep(0.05)
                 continue
 
-            command = line_follower.compute(red_line_data)
+            command = line_follower.compute(red_line_data, 0.001)
             
             drive.set_Velocity(command.v, command.omega)
 
