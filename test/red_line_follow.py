@@ -6,14 +6,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from drivebase import DriveBase
 from perception import OpenCVCamera, Perception
+from controllers import LineFollowingController
+
+
 
 
 # Controller gains
-K_X = 0.003        # cross track gain
-K_THETA = 1.2      # heading gain
-
 BASE_SPEED = 0.35
-LOOKAHEAD = 200
+LOOKAHEAD = 100
 
 
 def main():
@@ -21,6 +21,7 @@ def main():
     cam = OpenCVCamera()
     p = Perception(cam)
     drive = DriveBase()
+    line_follower = LineFollowingController( )
 
     print("Starting red line follow test")
 
@@ -30,27 +31,25 @@ def main():
 
             frame = cam.get_frame()
 
-            res = p.detect_red_line(frame, LOOKAHEAD)
+            red_line_data = p.detect_red_line(frame, LOOKAHEAD)
 
-            if not res.detected:
+            if not red_line_data.detected:
                 print("Line lost")
                 drive.stop()
                 time.sleep(0.05)
                 continue
 
-            # Combine cross-track and heading error
-            angular = K_X * res.x_error_center + K_THETA * res.heading_error_ahead
-
-            drive.set_Velocity(BASE_SPEED, angular)
+            command = line_follower.compute(red_line_data)
+            
+            drive.set_Velocity(command.v, command.omega)
 
             print(
-                f"x_center={res.x_error_center:.2f}  "
-                f"x_ahead={res.x_error_ahead:.2f}  "
-                f"heading={res.heading_error_ahead:.3f}  "
-                f"angular={angular:.3f}"
+                f"x_center={red_line_data.x_error_center:.2f}  "
+                f"x_ahead={red_line_data.x_error_ahead:.2f}  "
+                f"heading={red_line_data.heading_error_ahead:.3f}  "
             )
 
-            time.sleep(0.05)
+            time.sleep(0.001)
 
     except KeyboardInterrupt:
         print("Stopping robot")

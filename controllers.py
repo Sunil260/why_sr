@@ -82,6 +82,7 @@ class PDController:
 
 class LineFollowingController(BaseController):
     def __init__(self, k_heading_slow=1.0, v_min=0.0, v_max=0.4, omega_max=2.0):
+
         self.lateral_pd = PDController(kp=0.5, kd=0.05)
         self.k_heading_slow = k_heading_slow
         self.v_min = v_min
@@ -96,6 +97,7 @@ class LineFollowingController(BaseController):
         heading_error = estimate.heading_error_ahead
 
         omega = self.lateral_pd.compute(lateral_error, dt)
+        
         v = base_speed - self.k_heading_slow * abs(heading_error)
 
         v = max(self.v_min, min(self.v_max, v))
