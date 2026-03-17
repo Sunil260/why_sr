@@ -22,7 +22,7 @@ def main():
     cam = OpenCVCamera()
     p = Perception(cam, True)
     drive = DriveBase()
-    line_follower = LineFollowingController( )
+    line_follower = LineFollowingController(k_heading_slow=0.5)
 
     print("Starting red line follow test")
 
@@ -47,14 +47,14 @@ def main():
                 continue
 
             command = line_follower.compute(red_line_data, dt, BASE_SPEED)
-            
+            print(f"lin_v = {command.v:.2f} " f"omega = {command.omega:.2f}")
             drive.set_Velocity(command.v, command.omega)
 
-            print(
-                f"x_center={red_line_data.x_error_center:.2f}  "
-                f"x_ahead={red_line_data.x_error_ahead:.2f}  "
-                f"heading={np.degrees(red_line_data.heading_error_ahead):.3f}  "
-            )
+            # print(
+            #     f"x_center={red_line_data.x_error_center:.2f}  "
+            #     f"x_ahead={red_line_data.x_error_ahead:.2f}  "
+            #     f"heading={np.degrees(red_line_data.heading_error_ahead):.3f}  "
+            # )
 
             time.sleep(0.001)
 
