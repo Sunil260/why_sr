@@ -11,12 +11,10 @@ Controller implementations for 2wd s&r why robot
 '''
 from dataclasses import dataclass
 
-
 @dataclass
 class DriveCommand:
     v: float
     omega: float
-
 
 @dataclass
 class LineEstimate:
@@ -24,7 +22,6 @@ class LineEstimate:
     x_error_center: float
     x_error_ahead: float
     heading_error_ahead: float
-
 
 @dataclass
 class TargetEstimate:
@@ -35,7 +32,6 @@ class TargetEstimate:
     error_y: float
     area: float
 
-
 @dataclass
 class SafeZoneEstimate:
     detected: bool
@@ -44,11 +40,9 @@ class SafeZoneEstimate:
     error_y: float
     area: float
  
-
 class BaseController:
     def compute(self, estimate, dt):
         raise NotImplementedError
-
 
 class PDController:
     def __init__(self, kp: float, kd: float):
@@ -81,9 +75,9 @@ class PDController:
             self.kd = kd
 
 class LineFollowingController(BaseController):
-    def __init__(self, k_heading_slow=1.0, v_min=0.0, v_max=0.4, omega_max=2.0):
+    def __init__(self, k_heading_slow=0.1, v_min=0.0, v_max=0.4, omega_max=1.0):
 
-        self.lateral_pd = PDController(kp=0.5, kd=0.05)
+        self.lateral_pd = PDController(kp=0.5, kd=0)
         self.k_heading_slow = k_heading_slow
         self.v_min = v_min
         self.v_max = v_max
@@ -98,7 +92,8 @@ class LineFollowingController(BaseController):
 
         omega = self.lateral_pd.compute(lateral_error, dt)
         
-        v = base_speed - self.k_heading_slow * abs(heading_error)
+        # v = base_speed - self.k_heading_slow * abs(heading_error)
+        v = base_speed
 
         v = max(self.v_min, min(self.v_max, v))
         omega = max(-self.omega_max, min(self.omega_max, omega))
@@ -107,7 +102,7 @@ class LineFollowingController(BaseController):
     
 class AlignmentController(BaseController):
     def __init__(self, omega_max=1.5, x_tol=10.0):
-        self.align_pd = PDController(kp=0.01, kd=0.001)
+        self.align_pd = PDController(kp=0.01, kd=0)
         self.omega_max = omega_max
         self.x_tol = x_tol
 

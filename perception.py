@@ -59,8 +59,9 @@ class OpenCVCamera:
 
 class Perception:
   
-    def __init__(self, camera: OpenCVCamera):
+    def __init__(self, camera: OpenCVCamera, debug: bool = False):
         self.camera = camera
+        self.debug = debug
  
     def detect_red_line(self, frame, lookahead_y=200):
         # function to follow the red line (return the cross track error and heading angle error)
@@ -118,8 +119,11 @@ class Perception:
         #main driving error (center to the line at the same row)
         t_center = (center_y - y0_fit) / vy
         x_error_center = center_x - (x0_fit + t_center * vx)
+
+        x_error_center = x_error_center / (frame.shape[1]/2.0)
+        
        
-        print(f"Red line detected at lookahead Y={lookahead_y}: x_error_ahead={x_error_ahead:.2f}, heading_error_ahead={np.degrees(heading_error_ahead):.2f} degrees")
+        # print(f"Red line detected at lookahead Y={lookahead_y}: x_error_ahead={x_error_ahead:.2f}, heading_error_ahead={np.degrees(heading_error_ahead):.2f} degrees")
         return LineEstimate(detected=True, x_error_center=x_error_center, x_error_ahead=x_error_ahead, heading_error_ahead=heading_error_ahead)
 
     def detect_green_box(self, frame, min_area=100):
@@ -276,7 +280,86 @@ class Perception:
 
         return TargetEstimate(detected=True, centroid_x=avg_cx, centroid_y=avg_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
 
+    def show_line_debug(self, frame, estimate: LineEstimate, lookahead_y=200, window_name="Red Line Debug"):
+        if not self.debug:
+            return
+
+        dbg = frame.copy()
+        h, w = dbg.shape[:2]
+        center_x = w // 2
+        center_y = h // 2
+
+        # Draw reference lines
+        cv.line(dbg, (center_x, 0), (center_x, h - 1), (255, 255, 255), 1)         # camera centerline
+        cv.line(dbg, (0, center_y), (w - 1, center_y), (180, 180, 180), 1)          # tracking row
+        cv.line(dbg, (0, lookahead_y), (w - 1, lookahead_y), (100, 100, 255), 1)    # lookahead row
+
+        # Status text
+        status = "DETECTED" if estimate.detected else "NOT DETECTED"
+        color = (0, 255, 0) if estimate.detected else (0, 0, 255)
+        cv.putText(dbg, f"Line: {status}", (10, 25), cv.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+        if estimate.detected:
+            # Reconstruct line points from estimate
+            # x_error_center is normalized -> recover pixels
+            x_error_center_px = estimate.x_error_center * (w / 2.0)
+            x_line_center = int(round(center_x - x_error_center_px))
+
+            # x_error_ahead is already in pixels
+            x_line_ahead = int(round(center_x - estimate.x_error_ahead))
+
+            # Clamp to image bounds
+            x_line_center = max(0, min(w - 1, x_line_center))
+            x_line_ahead = max(0, min(w - 1, x_line_ahead))
+            lookahead_y_clamped = max(0, min(h - 1, lookahead_y))
+
+            # Draw detected points
+            cv.circle(dbg, (x_line_center, center_y), 6, (0, 255, 0), -1)
+            cv.circle(dbg, (x_line_ahead, lookahead_y_clamped), 6, (0, 255, 255), -1)
+
+            # Draw approximate detected path segment
+            cv.line(dbg, (x_line_center, center_y), (x_line_ahead, lookahead_y_clamped), (255, 0, 0), 2)
+
+            # Draw error arrows from centerline to detected points
+            cv.line(dbg, (center_x, center_y), (x_line_center, center_y), (0, 255, 0), 2)
+            cv.line(dbg, (center_x, lookahead_y_clamped), (x_line_ahead, lookahead_y_clamped), (0, 255, 255), 2)
+
+            # Overlay numeric values
+            cv.putText(
+                dbg,
+                f"x_center_norm={estimate.x_error_center:+.3f}",
+                (10, 55),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 255, 0),
+                2
+            )
+            cv.putText(
+                dbg,
+                f"x_ahead_px={estimate.x_error_ahead:+.1f}",
+                (10, 80),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 255, 255),
+                2
+            )
+            cv.putText(
+                dbg,
+                f"heading={np.degrees(estimate.heading_error_ahead):+.1f} deg",
+                (10, 105),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 200, 0),
+                2
+            )
+
+        cv.imshow(window_name, dbg)
+        cv.waitKey(1)
     
+    def close_debug(self):
+        if self.debug:
+            cv.destroyAllWindows()
+
                                
 
 

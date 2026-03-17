@@ -4,6 +4,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from perception import OpenCVCamera, Perception
+from time import sleep
 
 cam = OpenCVCamera()
 perception = Perception(cam)
@@ -16,12 +17,13 @@ while True:
 
     if res.detected:
         print(
-            f"x_center={res.x_error_center:.1f} "
-            f"x_ahead={res.x_error_ahead:.1f} "
+            f"x_c={res.x_error_center:.1f} "
+            f"x_fwd={res.x_error_ahead:.1f} "
             f"heading={res.heading_error_ahead:.3f}"
         )
+        sleep(0.25)
 
-    cv2.imshow("Red Line Test", frame)
+    # cv2.imshow("Red Line Test", frame)
 
     if cv2.waitKey(1) == ord("q"):
         break
