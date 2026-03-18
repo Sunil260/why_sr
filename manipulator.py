@@ -11,10 +11,10 @@ class Claw:
         self.servo = ContinuousServoPWM(pwm_channel=servo_pwm_channel, chip=servo_chip, center_us=servo_center_us)
         self.beam = BeamBreak(pin=beam_pin, debounce=beam_debounce)
 
-    def open(self):
+    def close(self):
         self.servo.ccw(0.85, delta_us=100) 
 
-    def close(self):
+    def open(self):
         self.servo.cw(0.85, delta_us=100) 
 
     def is_object_detected(self):
@@ -22,3 +22,5 @@ class Claw:
 
     def wait_for_object(self):
         self.beam.wait_press()
+    def end_servo(self):
+        self.servo.close()

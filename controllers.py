@@ -75,7 +75,7 @@ class PDController:
             self.kd = kd
 
 class LineFollowingController(BaseController):
-    def __init__(self, k_heading_slow=0.1, v_min=0.0, v_max=0.4, omega_max=1.0):
+    def __init__(self, k_heading_slow=1.0, v_min=0.2, v_max=0.4, omega_max=0.4):
 
         self.lateral_pd = PDController(kp=0.5, kd=0)
         self.k_heading_slow = k_heading_slow
@@ -92,8 +92,8 @@ class LineFollowingController(BaseController):
 
         omega = self.lateral_pd.compute(lateral_error, dt)
         
-        # v = base_speed - self.k_heading_slow * abs(heading_error)
-        v = base_speed
+        v = base_speed - self.k_heading_slow * abs(heading_error)
+        
 
         v = max(self.v_min, min(self.v_max, v))
         omega = max(-self.omega_max, min(self.omega_max, omega))
@@ -101,8 +101,8 @@ class LineFollowingController(BaseController):
         return DriveCommand(v=v, omega=omega)
     
 class AlignmentController(BaseController):
-    def __init__(self, omega_max=1.5, x_tol=10.0):
-        self.align_pd = PDController(kp=0.01, kd=0)
+    def __init__(self, omega_max=0.3, x_tol=0.025):
+        self.align_pd = PDController(kp=1.2, kd=0)
         self.omega_max = omega_max
         self.x_tol = x_tol
 
@@ -118,23 +118,30 @@ class AlignmentController(BaseController):
         return DriveCommand(v=0.0, omega=omega)
 
 class ApproachController(BaseController):
-    def __init__(self, omega_max=1.5, v_max=0.25):
-        self.heading_pd = PDController(kp=0.01, kd=0.001)
+    def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 400, x_tol = 0.05):
+        self.lateral_pd = PDController(kp=0.15, kd=0.0)
+        self.Kpy = 1.0
         self.omega_max = omega_max
         self.v_max = v_max
+        self.pickup_y = pickup_y
+        self.x_tol = x_tol
 
     def compute(self, estimate: TargetEstimate, dt: float):
         if not estimate.detected:
             return DriveCommand(v=0.0, omega=0.0)
 
-        omega = self.heading_pd.compute(estimate.error_x, dt)
+        omega = self.lateral_pd.compute(estimate.e_x, dt)
+        omega = max(-self.omega_max, min(self.omega_max, omega))
+
+        if (estimate.centroid_y >= self.pickup_y) and (abs(estimate.e_x)<= self.x_tol):
+            return DriveCommand(v=0.0, omega=0.0)
+        
 
         # Example: smaller detected area -> farther away -> move faster
-        v = 0.15
-        if estimate.area > 0:
-            v = max(0.0, min(self.v_max, 0.25 - 0.0005 * estimate.area))
+        v = self.Kpy * (self.pickup_y - estimate.centroid_y)
+        v = max(0.0, min(self.v_max, v))
 
-        omega = max(-self.omega_max, min(self.omega_max, omega))
+     
         return DriveCommand(v=v, omega=omega)
     
 class TurnUntilLineController(BaseController):

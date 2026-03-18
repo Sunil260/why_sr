@@ -40,6 +40,20 @@ class LineEstimate:
     heading_error_ahead: float #rads
     # confidence: float
 
+@dataclass
+class CheapOut:
+    detected: bool
+    bpx: float
+
+@dataclass
+class LegoEstimate:
+    detected: bool
+    centroid_x: float
+    centroid_y: float
+    e_x :float
+    e_y : float
+    area: float
+
 class OpenCVCamera:
     def __init__(self, camera_index=0, width=640, height=480, focal_length_px=768.0):
         self.cap = cv.VideoCapture(camera_index)
@@ -62,6 +76,63 @@ class Perception:
     def __init__(self, camera: OpenCVCamera, debug: bool = False):
         self.camera = camera
         self.debug = debug
+
+    def detect_legoman(self, frame, min_area = 100):
+        no_res = LegoEstimate(detected = False, centroid_x = None, centroid_y =None, e_x = None, e_y = None, area =None)
+        
+        # -------- Yellow HSV RANGE --------
+        l_yellow = np.array([18,120,80])
+        u_yellow = np.array([40,255,255])
+        hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+        y_mask = cv.inRange(hsv, l_yellow,u_yellow)
+
+        #morph cleanups
+        kern = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
+        # y_mask = cv.morphologyEx(y_mask, cv.MORPH_OPEN, kern, iterations=1)
+        y_mask = cv.morphologyEx(y_mask, cv.MORPH_CLOSE, kern, iterations=2)
+
+        #contours
+        # find the centroid of the line or create a fit line to the points in the center 
+        center_x = frame.shape[1] // 2
+        center_y = frame.shape[0] // 2
+       
+
+        #wants: lateral e at center, lateral e at lookahead, heading error at lookahead
+        contours, _ = cv.findContours(y_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return no_res
+
+        c = max(contours, key=cv.contourArea)
+        area = cv.contourArea(c)
+        if area < min_area:
+            return no_res
+        Moment= cv.moments(c)
+        if Moment['m00'] == 0:
+            return no_res
+        cx = Moment['m10'] / Moment['m00']
+        cy = Moment['m01'] / Moment['m00']
+
+        error_x = cx - center_x
+        error_x = error_x / (frame.shape[1]/2.0)
+        error_y = cy - center_y
+        error_y = error_y / (frame.shape[0]/2.0)
+
+        result = LegoEstimate(True, cx,cy,error_x,error_y,area)
+
+        if self.debug:
+            (circ_x, circ_y), r = cv.minEnclosingCircle(c)
+            dbg = frame.copy()
+
+            cv.circle(dbg,(int(circ_x),int(circ_y)), int(r), (0,255,0), 2)
+            cv.circle(dbg,(int(round(cx)),int(round(cy))), 2, (0,255,255), 2)
+            cv.line(dbg,(int(round(cx)),int(round(cy))), (center_x,center_y), (0,255,0),2)
+
+            vis_mask = cv.cvtColor(y_mask, cv.COLOR_GRAY2BGR)
+            vis = np.vstack((dbg, vis_mask))
+            cv.imshow("LegoMan", vis)
+            cv.waitKey(1)
+
+        return result
  
     def detect_red_line(self, frame, lookahead_y=200):
         # function to follow the red line (return the cross track error and heading angle error)
@@ -170,7 +241,7 @@ class Perception:
 
         return no_res
 
-    def detect_target_cheap(self, frame):
+    def detect_target_cheap(self, frame, min_area=3500):
         # function to detect the target asap 
 
         #shrink image for processing
@@ -195,12 +266,22 @@ class Perception:
         blue_mask = cv.morphologyEx(blue_mask, cv.MORPH_CLOSE, kernel)
 
         blue_pixels = cv.countNonZero(blue_mask)
-        if blue_pixels < 120:
-            return False
+
+        if self.debug:
+            dbg = small.copy()
+            mask_b = cv.cvtColor(blue_mask,cv.COLOR_GRAY2BGR)
+            vis = np.hstack((dbg, mask_b))
+            cv.imshow("Cheap detector", vis)
+            cv.waitKey(1)
+
         
-        #the blue ring is exists
+
+        if blue_pixels < min_area:
+            return CheapOut(False,blue_pixels)
         
-        return True
+      
+        
+        return CheapOut(True, blue_pixels)
 
     def analyze_target(self, frame):
         # function to analyze the target (return the position and orientation (angle error and distance error) only if theres a target in frame) 
@@ -259,13 +340,13 @@ class Perception:
 
         # check centers are close to eachother
         center_dist = np.hypot(blue_cx - red_cx, blue_cy - red_cy)
-        if center_dist > 10:
+        if center_dist > 100:
             print("Blue and red contours are not close enough, likely not the target")
             return no_res
 
         #check area of blue> red
         if blue_w * blue_h < red_w * red_h:
-            print("Blue contour area is smaller than red, likely not the target")
+            print(f"Blue contour area is smaller than red, likely not the target")
             return no_res
 
         #calculate and report the errors 
@@ -277,8 +358,55 @@ class Perception:
         error_x = avg_cx - center_x
         error_y = avg_cy - center_y
 
+        error_x = error_x / (frame.shape[1]/2.0)
+        error_y = error_y / (frame.shape[0]/2.0)
 
-        return TargetEstimate(detected=True, centroid_x=avg_cx, centroid_y=avg_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
+        estimate = TargetEstimate(detected=True, centroid_x=avg_cx, centroid_y=avg_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
+
+        if self.debug:
+            self.show_target_debug(
+                frame, blue_frame, red_frame, estimate, blue_c, red_c, blue_ellipse, red_ellipse
+            )
+             
+        return estimate
+
+    def show_target_debug(self, frame, bm, rm, est, bc, rc, be, re):
+        if not self.debug:
+            return
+        dbg = frame.copy()
+        h,w = dbg.shape[:2]
+
+        cx = w//2
+        cy = h//2
+        cv.line(dbg, (cx, 0), (cx, h-1), (255, 255, 255), 1)
+        cv.line(dbg, (0, cy), (w-1, cy), (255, 255, 255), 1)
+
+        # if bc is not None:
+        #     cv.drawContours(dbg, [bc], -1, (255,0,0), 2)
+        # if rc is not None:
+        #     cv.drawContours(dbg, [rc], -1, (0,0,255), 2)
+        if be is not None:
+            cv.ellipse(dbg, be, (255,0,0),2)
+        if re is not None:
+            cv.ellipse(dbg, re, (0,0,255),2)  
+        if est.detected:
+            tx = int(round(est.centroid_x))
+            ty = int(round(est.centroid_y))
+
+            cv.circle(dbg, (tx,ty), 6, (0,255,0), -1)
+            cv.line(dbg, (cx,cy), (tx,ty),(0,255,0), 2 )
+
+        b_vis = cv.cvtColor(bm, cv.COLOR_GRAY2BGR)
+        r_vis = cv.cvtColor(rm, cv.COLOR_GRAY2BGR)
+
+        c_masks = np.hstack((b_vis,r_vis))
+        c_masks = cv.resize(c_masks, (dbg.shape[1], c_masks.shape[0]))
+        vis = np.vstack((dbg,c_masks))
+
+        cv.imshow("analyzed target", vis)
+        cv.waitKey(1)
+
+
 
     def show_line_debug(self, frame, estimate: LineEstimate, lookahead_y=200, window_name="Red Line Debug"):
         if not self.debug:
@@ -290,14 +418,15 @@ class Perception:
         center_y = h // 2
 
         # Draw reference lines
-        cv.line(dbg, (center_x, 0), (center_x, h - 1), (255, 255, 255), 1)         # camera centerline
+        cv.line(dbg, (center_x, 0), (center_x, h-1), (255, 255, 255), 1)         # camera centerline
         cv.line(dbg, (0, center_y), (w - 1, center_y), (180, 180, 180), 1)          # tracking row
         cv.line(dbg, (0, lookahead_y), (w - 1, lookahead_y), (100, 100, 255), 1)    # lookahead row
 
         # Status text
+        cv.rectangle(dbg, (8,8), (180,125), (30,30,30), -1)
         status = "DETECTED" if estimate.detected else "NOT DETECTED"
         color = (0, 255, 0) if estimate.detected else (0, 0, 255)
-        cv.putText(dbg, f"Line: {status}", (10, 25), cv.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv.putText(dbg, f"Line: {status}", (10, 25), cv.FONT_HERSHEY_DUPLEX, 0.45, color, 1)
 
         if estimate.detected:
             # Reconstruct line points from estimate
@@ -325,32 +454,33 @@ class Perception:
             cv.line(dbg, (center_x, lookahead_y_clamped), (x_line_ahead, lookahead_y_clamped), (0, 255, 255), 2)
 
             # Overlay numeric values
+            
             cv.putText(
                 dbg,
-                f"x_center_norm={estimate.x_error_center:+.3f}",
+                f"x_c_n={estimate.x_error_center:+.3f}",
                 (10, 55),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                cv.FONT_HERSHEY_DUPLEX,
+                0.45,
                 (0, 255, 0),
-                2
+                1
             )
             cv.putText(
                 dbg,
-                f"x_ahead_px={estimate.x_error_ahead:+.1f}",
+                f"x_a_px={estimate.x_error_ahead:+.1f}",
                 (10, 80),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                cv.FONT_HERSHEY_DUPLEX,
+                0.45,
                 (0, 255, 255),
-                2
+                1
             )
             cv.putText(
                 dbg,
                 f"heading={np.degrees(estimate.heading_error_ahead):+.1f} deg",
                 (10, 105),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.55,
+                cv.FONT_HERSHEY_DUPLEX,
+                0.45,
                 (255, 200, 0),
-                2
+                1
             )
 
         cv.imshow(window_name, dbg)
