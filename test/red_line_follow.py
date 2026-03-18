@@ -13,16 +13,18 @@ from controllers import LineFollowingController
 
 
 # Controller gains
-BASE_SPEED = 0.35
-LOOKAHEAD = 100
+BASE_SPEED = 0.3
+LOOKAHEAD = 50
 
 
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam, True)
+    p = Perception(cam, False)
     drive = DriveBase()
-    line_follower = LineFollowingController(k_heading_slow=0.5)
+    line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
+
+    line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
 
     print("Starting red line follow test")
 

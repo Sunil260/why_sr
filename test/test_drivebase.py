@@ -9,7 +9,7 @@ db = DriveBase()
 
 print("Forward")
 
-db.set_Velocity(0.4, 0)
+db.set_Velocity(0.0, -0.20)
 
 time.sleep(3)
 

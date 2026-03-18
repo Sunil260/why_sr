@@ -189,7 +189,7 @@ class Perception:
 
         #main driving error (center to the line at the same row)
         t_center = (center_y - y0_fit) / vy
-        x_error_center = center_x - (x0_fit + t_center * vx)
+        x_error_center = (x0_fit + t_center * vx) - center_x
 
         x_error_center = x_error_center / (frame.shape[1]/2.0)
         

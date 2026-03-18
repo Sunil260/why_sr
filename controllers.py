@@ -75,7 +75,7 @@ class PDController:
             self.kd = kd
 
 class LineFollowingController(BaseController):
-    def __init__(self, k_heading_slow=1.0, v_min=0.2, v_max=0.4, omega_max=0.4):
+    def __init__(self, k_heading_slow=1.0, v_min=0.25, v_max=0.5, omega_max=0.4):
 
         self.lateral_pd = PDController(kp=0.5, kd=0)
         self.k_heading_slow = k_heading_slow
@@ -93,9 +93,8 @@ class LineFollowingController(BaseController):
         omega = self.lateral_pd.compute(lateral_error, dt)
         
         v = base_speed - self.k_heading_slow * abs(heading_error)
-        
-
         v = max(self.v_min, min(self.v_max, v))
+
         omega = max(-self.omega_max, min(self.omega_max, omega))
 
         return DriveCommand(v=v, omega=omega)
