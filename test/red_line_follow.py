@@ -56,8 +56,6 @@ def main():
             #     f"heading={np.degrees(red_line_data.heading_error_ahead):.3f}  "
             # )
 
-            time.sleep(0.001)
-
     except KeyboardInterrupt:
         print("Stopping robot")
 
