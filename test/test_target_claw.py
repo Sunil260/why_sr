@@ -18,7 +18,7 @@ def main():
     approach_target = ApproachController()
     drivebase = DriveBase()
     claw = Claw()
-
+    claw.open()
     try:
         prev_t = time.monotonic()
 
@@ -43,6 +43,7 @@ def main():
                 if (result.centroid_y>=approach_target.pickup_y):
                     print("closing")
                     claw.close()
+                    break
             else:
                 print("no lego man")
     
@@ -50,12 +51,11 @@ def main():
         print("Stopping robot")
 
     finally:
+        claw.end_servo()
         drivebase.stop()
         cam.release()
         p.close_debug()
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    claw = Claw()
-    claw.
     main()

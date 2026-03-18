@@ -57,7 +57,7 @@ def main():
 
                         command = taget_aligner.compute(result, dt)
                         print(command.v, command.omega)
-                        # drivebase.set_Velocity(command.v , command.omega)
+                        drivebase.set_Velocity(command.v , command.omega)
                 else: 
                     #approach control
                     result = p.detect_legoman(frame)
