@@ -10,7 +10,7 @@ from perception import OpenCVCamera, Perception
 
 def main():
     cam = OpenCVCamera()
-    p = Perception(cam, debug=False)
+    p = Perception(cam, debug=True)
 
     print("Starting green detection test... Press 'q' to quit.")
 
@@ -24,8 +24,8 @@ def main():
             # --- recreate mask for visualization ---
             hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 
-            lower_green = np.array([40, 80, 50])
-            upper_green = np.array([80, 255, 255])
+            lower_green = np.array([35, 50, 40])
+            upper_green = np.array([90, 255, 255])
 
             mask = cv.inRange(hsv, lower_green, upper_green)
 
