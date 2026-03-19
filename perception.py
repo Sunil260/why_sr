@@ -552,7 +552,7 @@ class Perception:
         
         if self.debug:
                 debug_frame = frame.copy()
-                cv.drawContours(debug_frame, [c], -1, (0, 255, 0), 2)
+                cv.drawContours(debug_frame, [green_c], -1, (0, 255, 0), 2)
                 cv.circle(debug_frame, (int(cx), int(cy)), 5, (0, 0, 255), -1)
                 cv.imshow("Green Debug", debug_frame)
 
