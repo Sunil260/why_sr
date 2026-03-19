@@ -80,7 +80,7 @@ def main():
     p = Perception(cam,True)
     lw_detected = False
     aligned = False
-    target_aligner = AlignmentController()
+    green_aligner = AlignmentController()
     approach_targer = ApproachController()
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
@@ -89,6 +89,7 @@ def main():
 
     state = RobotState.LINE_FOLLOW #set state
     prev_t = time.monotonic()
+    aligned = False
 
 
     try:
@@ -114,8 +115,19 @@ def main():
 
                 case RobotState.ALIGN_GREEN:
                     print(f"In green alignment mode now")
+                    aligned = run_align_green(
+                        p,
+                        frame,
+                        dt,
+                        drivebase,
+                        green_aligner,   # reuse your alignment controller
+                        aligned
+                    )
 
-                    state = RobotState.DROP
+                    if aligned:
+                        print("green box aligned")
+                        drivebase.stop()
+                        state = RobotState.DROP
                 
                 case RobotState.DROP:
 

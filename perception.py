@@ -524,7 +524,7 @@ class Perception:
         if area < 200: #tune this
             return no_res
     # -------- CENTROID (rectangle → use moments) --------
-        M = cv.moments(c)
+        M = cv.moments(green_c)
         if M["m00"] == 0:
             return no_res
 
