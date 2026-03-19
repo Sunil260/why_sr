@@ -60,8 +60,12 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
 
             # Compute alignment command
             command = target_aligner.compute(result, dt)
-            print(f"Alignment command → v: {command.v:.2f}, omega: {command.omega:.2f}")
-            drivebase.set_Velocity(command.v, command.omega)
+            if command.omega > 0:
+                drivebase.set_Velocity(command.v , max(command.omega, 0.2))
+                print(command.v, command.omega)
+            else:
+                drivebase.set_Velocity(command.v , min(command.omega, -0.2))
+                print(command.v, command.omega)
 
         else:
             print("Blue target not detected, stopping.")
@@ -70,6 +74,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
     else:
         # Step 2: Approach the Lego target
         result = p.detect_legoman(frame)
+        drivebase.stop()
         if result.detected:
             print(
                 f"Approaching: detected={result.detected} "
@@ -79,11 +84,16 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
             )
             # Compute approach command
             command = approach_controller.compute(result, dt)
-            print(f"Approach command → v: {command.v:.2f}, omega: {command.omega:.2f}")
-            drivebase.set_Velocity(command.v, command.omega)
-        else:
-            print("Lego target not detected, stopping.")
-            drivebase.stop()
+        #     print(f"Approach command → v: {command.v:.2f}, omega: {command.omega:.2f}")
+        #     if command.omega > 0:
+        #         drivebase.set_Velocity(command.v , max(command.omega, 0.2))
+        #         print(command.v, command.omega)
+        #     else:
+        #         drivebase.set_Velocity(command.v , min(command.omega, -0.2))
+        #         print(command.v, command.omega)
+        # else:
+        #     print("Lego target not detected, stopping.")
+        #     drivebase.stop()
 
     return aligned
 
@@ -92,7 +102,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,True)
+    p = Perception(cam,False)
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()
@@ -120,7 +130,7 @@ def main():
             frame = cam.get_frame()
 
 # check for blue
-            blue = p.detect_target_cheap(frame)
+            blue = p.detect_target_cheap(frame, min_area=5000)
 
             # match-case for FSM
             match state:
@@ -130,6 +140,7 @@ def main():
                     if blue.detected:
                         print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
                         drivebase.stop()
+                        time.sleep(1)
                         state = RobotState.TARGET_MODE
                         continue
                     
@@ -153,7 +164,7 @@ def main():
                 case RobotState.TARGET_MODE:
                     print(f"In target state now")
                     print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
-                    # aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
+                    aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
 
 
 

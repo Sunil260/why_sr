@@ -40,7 +40,7 @@ def main():
             if lw_detected is not True:
 
 
-                output = p.detect_target_cheap(frame)
+                output = p.detect_target_cheap(frame,min_area=1500)
                 if output.detected:
                     print(f"found w {output.bpx} px" f"output.detected={output.detected}")
                     lw_detected = True
@@ -81,10 +81,17 @@ def main():
                             aligned = True
 
                         command = target_aligner.compute(result, dt)
-                        print(command.v, command.omega)
-                        drivebase.set_Velocity(command.v , command.omega)
+                        # print(command.v, command.omega)
+                        if command.omega > 0:
+                            drivebase.set_Velocity(command.v , max(command.omega, 0.2))
+                            print(command.v, command.omega)
+                        else:
+                            drivebase.set_Velocity(command.v , min(command.omega, -0.2))
+                            print(command.v, command.omega)
+                                
                 else: 
                     #approach control
+                    drivebase.stop()
                     result = p.detect_legoman(frame)
                     if result.detected:
                         print(

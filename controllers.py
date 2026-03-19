@@ -100,8 +100,8 @@ class LineFollowingController(BaseController):
         return DriveCommand(v=v, omega=omega)
     
 class AlignmentController(BaseController):
-    def __init__(self, omega_max=0.3, x_tol=0.025):
-        self.align_pd = PDController(kp=1.2, kd=0)
+    def __init__(self, omega_max=0.3, x_tol=0.01): #changing from 0.025
+        self.align_pd = PDController(kp=0.5, kd=0.01)
         self.omega_max = omega_max
         self.x_tol = x_tol
 

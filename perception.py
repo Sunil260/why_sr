@@ -10,6 +10,7 @@ from itertools import count
 
 import cv2 as cv
 import numpy as np
+import time
 from dataclasses import dataclass
 
 @dataclass 
@@ -340,7 +341,7 @@ class Perception:
 
         # check centers are close to eachother
         center_dist = np.hypot(blue_cx - red_cx, blue_cy - red_cy)
-        if center_dist > 100:
+        if center_dist > 500:
             print("Blue and red contours are not close enough, likely not the target")
             return no_res
 
@@ -521,7 +522,7 @@ class Perception:
         green_c = max(green_countours, key=cv.contourArea)
 
         area = cv.contourArea(green_c)
-        if area < 200: #tune this
+        if area < 500: #tune this
             return no_res
     # -------- CENTROID (rectangle → use moments) --------
         M = cv.moments(green_c)
@@ -553,6 +554,12 @@ class Perception:
         if self.debug:
                 debug_frame = frame.copy()
                 cv.drawContours(debug_frame, [green_c], -1, (0, 255, 0), 2)
+                 # draw fitted rectangle
+                rect = cv.minAreaRect(green_c)
+                box = cv.boxPoints(rect)
+                box = np.int32(box)
+                cv.drawContours(debug_frame, [box], 0, (0, 255, 0), 2)
+
                 cv.circle(debug_frame, (int(cx), int(cy)), 5, (0, 0, 255), -1)
                 cv.imshow("Green Debug", debug_frame)
 
