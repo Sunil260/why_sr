@@ -92,7 +92,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,False)
+    p = Perception(cam,True)
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()
@@ -153,7 +153,7 @@ def main():
                 case RobotState.TARGET_MODE:
                     print(f"In target state now")
                     print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
-                    aligned = run_target_mode(p,fraime,dt,drivebase,target_aligner,approach_targer,aligned)
+                    aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
 
 
 
