@@ -489,6 +489,74 @@ class Perception:
     def close_debug(self):
         if self.debug:
             cv.destroyAllWindows()
+    
+    # khush edits
+
+    def analyze_green(self, frame):
+        # function to analyze the target (return the position and orientation (angle error and distance error) only if theres a target in frame) 
+        no_res = TargetEstimate(detected=False, centroid_x=0.0, centroid_y=0.0, area=0.0, error_x=0.0, error_y=0.0)
+        
+        hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+        
+        # -------- GREEN HSV RANGE --------
+        lower_green = np.array([40, 80, 50])
+        upper_green= np.array([80, 255, 255])
+
+        green_frame = cv.inRange(hsv, lower_green, upper_green)
+
+        #filtering to both 
+        kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+
+        green_frame = cv.morphologyEx(green_frame, cv.MORPH_OPEN, kernel, iterations=1)
+        green_frame = cv.morphologyEx(green_frame, cv.MORPH_CLOSE, kernel, iterations=2)
+
+
+        #find contours - image may have acclusiong try to fit eclipse and return the centroid
+        green_countours, _ = cv.findContours(green_frame, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+        if not green_countours:
+            return no_res
+       
+        
+        green_c = max(green_countours, key=cv.contourArea)
+
+        area = cv.contourArea(green_c)
+        if area < 200: #tune this
+            return no_res
+    # -------- CENTROID (rectangle → use moments) --------
+        M = cv.moments(c)
+        if M["m00"] == 0:
+            return no_res
+
+        cx = M["m10"] / M["m00"]
+        cy = M["m01"] / M["m00"]
+
+        #calculate and report the errors 
+
+        center_x = frame.shape[1] // 2
+        center_y = frame.shape[0] // 2
+
+        error_x = (cx - center_x) / (frame.shape[1] / 2.0)
+        error_y = (cy - center_y) / (frame.shape[0] / 2.0)
+
+
+
+        estimate = TargetEstimate(
+                detected=True,
+                centroid_x=cx,
+                centroid_y=cy,
+                area=area,
+                error_x=error_x,
+                error_y=error_y
+            )
+        
+        if self.debug:
+                debug_frame = frame.copy()
+                cv.drawContours(debug_frame, [c], -1, (0, 255, 0), 2)
+                cv.circle(debug_frame, (int(cx), int(cy)), 5, (0, 0, 255), -1)
+                cv.imshow("Green Debug", debug_frame)
+
+        return estimate
 
                                
 
