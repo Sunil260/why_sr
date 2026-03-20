@@ -15,10 +15,11 @@ import numpy as np
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,True)
-    lw_detected = False
+    p = Perception(cam,False)
+    lw_detected = True
     aligned = False
     target_aligner = AlignmentController()
+    green_aligner = AlignmentController()
     approach_targer = ApproachController()
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
@@ -68,26 +69,29 @@ def main():
                 
                 if not aligned:
                     
-                    result = p.analyze_target(frame)
+                    result = p.detect_green_box(frame) #detect green box
                     # TargetEstimate(detected=True, centroid_x=red_cx, centroid_y=red_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
                     if result.detected:
                         print(
                             f"{result.detected} "
                             f"e_x = {np.round(result.error_x,2 )} "
                             f"e_y = {np.round(result.error_y,2)} "
-                            f"Blue area = {np.round(result.area,2)} "
+                            f"Green area = {np.round(result.area,2)} "
                         )
-                        if abs(result.error_x) < target_aligner.x_tol:
+                        if abs(result.error_x) < green_aligner.x_tol:
                             aligned = True
 
-                        command = target_aligner.compute(result, dt)
+                        command = green_aligner.compute(result, dt)
                         # print(command.v, command.omega)
-                        if command.omega > 0:
-                            drivebase.set_Velocity(command.v , max(command.omega, 0.2))
-                            print(command.v, command.omega)
-                        else:
-                            drivebase.set_Velocity(command.v , min(command.omega, -0.2))
-                            print(command.v, command.omega)
+                        omega = command.omega
+
+                        if abs(omega) < 0.15:
+                            omega = 0.0
+                        
+                        p.show_green_debug(frame, p.last_green_mask, result, command.v, omega)
+
+
+                        drivebase.set_Velocity(command.v, omega)
                                 
                 else: 
                     #approach control
