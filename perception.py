@@ -290,16 +290,26 @@ class Perception:
         
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         
+        # widen S and V slightly (more forgiving)
+
+
         # -------- BLUE HSV RANGE --------
-        lower_blue = np.array([95, 80, 40])
+        # lower_blue = np.array([95, 80, 40])
+        lower_blue = np.array([95, 50, 30])
         upper_blue = np.array([130, 255, 255])
 
         blue_frame = cv.inRange(hsv, lower_blue, upper_blue)
 
         # -------- RED HSV RANGE --------
-        red_lower1 = np.array([0, 100, 100])
+        # red_lower1 = np.array([0, 100, 100])
+        # red_upper1 = np.array([10, 255, 255])
+        # red_lower2 = np.array([160, 100, 100])
+        # red_upper2 = np.array([180, 255, 255])
+
+        
+        red_lower1 = np.array([0, 20, 70])
         red_upper1 = np.array([10, 255, 255])
-        red_lower2 = np.array([160, 100, 100])
+        red_lower2 = np.array([160, 20, 70])
         red_upper2 = np.array([180, 255, 255])
         m_red1 = cv.inRange(hsv, red_lower1, red_upper1)
         m_red2 = cv.inRange(hsv, red_lower2, red_upper2)
@@ -307,13 +317,19 @@ class Perception:
         red_frame = cv.bitwise_or(m_red1, m_red2)
 
         #filtering to both 
-        kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+        # kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (7, 7))
+
+        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=3)
 
         red_frame = cv.morphologyEx(red_frame, cv.MORPH_OPEN, kernel, iterations=1)
-        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=2)
+        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=3)
+        
+        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=3)
 
         blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_OPEN, kernel, iterations=1)
-        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=2)
+        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=3)
 
 
         #find contours - image may have acclusiong try to fit eclipse and return the centroid
@@ -341,7 +357,7 @@ class Perception:
 
         # check centers are close to eachother
         center_dist = np.hypot(blue_cx - red_cx, blue_cy - red_cy)
-        if center_dist > 500:
+        if center_dist > 100:
             print("Blue and red contours are not close enough, likely not the target")
             return no_res
 
