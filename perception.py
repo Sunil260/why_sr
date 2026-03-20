@@ -193,12 +193,12 @@ class Perception:
         x_error_center = (x0_fit + t_center * vx) - center_x
 
         x_error_center = x_error_center / (frame.shape[1]/2.0)
-        
+        # normalize error
        
         # print(f"Red line detected at lookahead Y={lookahead_y}: x_error_ahead={x_error_ahead:.2f}, heading_error_ahead={np.degrees(heading_error_ahead):.2f} degrees")
         return LineEstimate(detected=True, x_error_center=x_error_center, x_error_ahead=x_error_ahead, heading_error_ahead=heading_error_ahead)
 
-    def detect_green_box(self, frame, min_area=100):
+    def detect_green_box(self, frame, min_area=200):
         # function to detect the green box (return the position and orientation (angle error and distance error)
         no_res = SafeZoneEstimate(detected=False, centroid_x=0.0, error_x=0.0, error_y=0.0, area=0.0)
         # -------- GREEN HSV RANGE --------
@@ -231,14 +231,33 @@ class Perception:
                 cv.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv.circle(frame, (cx, cy), 6, (0, 255, 0), -1)
 
+                # frame_h, frame_w = frame.shape[:2]
+
                 center_x = frame.shape[1] // 2
                 center_y = frame.shape[0] // 2
 
                 error_x = cx - center_x
                 error_y = cy - center_y
 
+                error_x = error_x / (frame.shape[1]/2.0)
+                error_y = error_y / (frame.shape[0]/2.0)
+
                 print("Green box detected center:", center, "Error:", error_x, "Area:", area)
-                return SafeZoneEstimate(detected=True, centroid_x=cx, error_x=error_x, error_y=error_y, area=area)
+                self.last_green_mask = mask
+
+                estimate = TargetEstimate(
+                    detected=True,
+                    centroid_x=cx,
+                    centroid_y=cy,
+                    area=w*h,
+                    error_x=error_x,
+                    error_y=error_y
+                    )
+                if self.debug:
+                    self.show_green_debug(frame, self.last_green_mask, estimate)
+
+                return estimate
+                # return SafeZoneEstimate(detected=True, centroid_x=cx, error_x=error_x, error_y=error_y, area=area) #match analyze target
 
         return no_res
 
@@ -503,83 +522,141 @@ class Perception:
         cv.imshow(window_name, dbg)
         cv.waitKey(1)
     
+    def show_green_debug(self, frame, mask, est, v_cmd=None, omega_cmd=None):
+        if not self.debug:
+            return
+
+        dbg = frame.copy()
+        h, w = dbg.shape[:2]
+
+        # --- center cross ---
+        cx = w // 2
+        cy = h // 2
+        cv.line(dbg, (cx, 0), (cx, h-1), (255, 255, 255), 1)
+        cv.line(dbg, (0, cy), (w-1, cy), (255, 255, 255), 1)
+
+        # --- draw detection ---
+        if est.detected:
+            tx = int(round(est.centroid_x))
+            ty = int(round(est.centroid_y))
+
+            cv.circle(dbg, (tx, ty), 6, (0, 255, 0), -1)
+            cv.line(dbg, (cx, cy), (tx, ty), (0, 255, 0), 2)
+
+        # --- status box ---
+        cv.rectangle(dbg, (8, 8), (220, 140), (30, 30, 30), -1)
+
+        status = "DETECTED" if est.detected else "NOT DETECTED"
+        color = (0, 255, 0) if est.detected else (0, 0, 255)
+
+        cv.putText(dbg, f"Green: {status}", (10, 25),
+                cv.FONT_HERSHEY_DUPLEX, 0.5, color, 1)
+
+        if est.detected:
+            cv.putText(dbg, f"err_x={est.error_x:+.3f}", (10, 50),
+                    cv.FONT_HERSHEY_DUPLEX, 0.45, (0,255,0), 1)
+            cv.putText(dbg, f"err_y={est.error_y:+.3f}", (10, 70),
+                    cv.FONT_HERSHEY_DUPLEX, 0.45, (0,255,0), 1)
+            cv.putText(dbg, f"area={est.area:.0f}", (10, 90),
+                    cv.FONT_HERSHEY_DUPLEX, 0.45, (200,200,200), 1)
+
+        # --- control outputs ---
+        if v_cmd is not None:
+            cv.putText(dbg, f"v={v_cmd:+.2f}", (10, 110),
+                    cv.FONT_HERSHEY_DUPLEX, 0.45, (255,200,0), 1)
+        if omega_cmd is not None:
+            cv.putText(dbg, f"omega={omega_cmd:+.2f}", (10, 130),
+                    cv.FONT_HERSHEY_DUPLEX, 0.45, (255,200,0), 1)
+
+        # --- mask visualization ---
+        mask_vis = cv.cvtColor(mask, cv.COLOR_GRAY2BGR)
+
+        # resize mask to match width
+        mask_vis = cv.resize(mask_vis, (dbg.shape[1], mask_vis.shape[0]))
+
+        # stack like your other debug
+        vis = np.vstack((dbg, mask_vis))
+
+        cv.imshow("green debug", vis)
+        cv.waitKey(1)
+    
     def close_debug(self):
         if self.debug:
             cv.destroyAllWindows()
     
-    # khush edits
+    # # khush edits
 
-    def analyze_green(self, frame):
-        # function to analyze the target (return the position and orientation (angle error and distance error) only if theres a target in frame) 
-        no_res = TargetEstimate(detected=False, centroid_x=0.0, centroid_y=0.0, area=0.0, error_x=0.0, error_y=0.0)
+    # def analyze_green(self, frame):
+    #     # function to analyze the target (return the position and orientation (angle error and distance error) only if theres a target in frame) 
+    #     no_res = TargetEstimate(detected=False, centroid_x=0.0, centroid_y=0.0, area=0.0, error_x=0.0, error_y=0.0)
         
-        hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+    #     hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         
-        # -------- GREEN HSV RANGE --------
-        lower_green = np.array([40, 80, 50])
-        upper_green= np.array([80, 255, 255])
+    #     # -------- GREEN HSV RANGE --------
+    #     lower_green = np.array([40, 80, 50])
+    #     upper_green= np.array([80, 255, 255])
 
-        green_frame = cv.inRange(hsv, lower_green, upper_green)
+    #     green_frame = cv.inRange(hsv, lower_green, upper_green)
 
-        #filtering to both 
-        kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
+    #     #filtering to both 
+    #     kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
 
-        green_frame = cv.morphologyEx(green_frame, cv.MORPH_OPEN, kernel, iterations=1)
-        green_frame = cv.morphologyEx(green_frame, cv.MORPH_CLOSE, kernel, iterations=2)
+    #     green_frame = cv.morphologyEx(green_frame, cv.MORPH_OPEN, kernel, iterations=1)
+    #     green_frame = cv.morphologyEx(green_frame, cv.MORPH_CLOSE, kernel, iterations=2)
 
 
-        #find contours - image may have acclusiong try to fit eclipse and return the centroid
-        green_countours, _ = cv.findContours(green_frame, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    #     #find contours - image may have acclusiong try to fit eclipse and return the centroid
+    #     green_countours, _ = cv.findContours(green_frame, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
-        if not green_countours:
-            return no_res
+    #     if not green_countours:
+    #         return no_res
        
         
-        green_c = max(green_countours, key=cv.contourArea)
+    #     green_c = max(green_countours, key=cv.contourArea)
 
-        area = cv.contourArea(green_c)
-        if area < 500: #tune this
-            return no_res
-    # -------- CENTROID (rectangle → use moments) --------
-        M = cv.moments(green_c)
-        if M["m00"] == 0:
-            return no_res
+    #     area = cv.contourArea(green_c)
+    #     if area < 500: #tune this
+    #         return no_res
+    # # -------- CENTROID (rectangle → use moments) --------
+    #     M = cv.moments(green_c)
+    #     if M["m00"] == 0:
+    #         return no_res
 
-        cx = M["m10"] / M["m00"]
-        cy = M["m01"] / M["m00"]
+    #     cx = M["m10"] / M["m00"]
+    #     cy = M["m01"] / M["m00"]
 
-        #calculate and report the errors 
+    #     #calculate and report the errors 
 
-        center_x = frame.shape[1] // 2
-        center_y = frame.shape[0] // 2
+    #     center_x = frame.shape[1] // 2
+    #     center_y = frame.shape[0] // 2
 
-        error_x = (cx - center_x) / (frame.shape[1] / 2.0)
-        error_y = (cy - center_y) / (frame.shape[0] / 2.0)
+    #     error_x = (cx - center_x) / (frame.shape[1] / 2.0)
+    #     error_y = (cy - center_y) / (frame.shape[0] / 2.0)
 
 
 
-        estimate = TargetEstimate(
-                detected=True,
-                centroid_x=cx,
-                centroid_y=cy,
-                area=area,
-                error_x=error_x,
-                error_y=error_y
-            )
+    #     estimate = TargetEstimate(
+    #             detected=True,
+    #             centroid_x=cx,
+    #             centroid_y=cy,
+    #             area=area,
+    #             error_x=error_x,
+    #             error_y=error_y
+    #         )
         
-        if self.debug:
-                debug_frame = frame.copy()
-                cv.drawContours(debug_frame, [green_c], -1, (0, 255, 0), 2)
-                 # draw fitted rectangle
-                rect = cv.minAreaRect(green_c)
-                box = cv.boxPoints(rect)
-                box = np.int32(box)
-                cv.drawContours(debug_frame, [box], 0, (0, 255, 0), 2)
+    #     if self.debug:
+    #             debug_frame = frame.copy()
+    #             cv.drawContours(debug_frame, [green_c], -1, (0, 255, 0), 2)
+    #              # draw fitted rectangle
+    #             rect = cv.minAreaRect(green_c)
+    #             box = cv.boxPoints(rect)
+    #             box = np.int32(box)
+    #             cv.drawContours(debug_frame, [box], 0, (0, 255, 0), 2)
 
-                cv.circle(debug_frame, (int(cx), int(cy)), 5, (0, 0, 255), -1)
-                cv.imshow("Green Debug", debug_frame)
+    #             cv.circle(debug_frame, (int(cx), int(cy)), 5, (0, 0, 255), -1)
+    #             cv.imshow("Green Debug", debug_frame)
 
-        return estimate
+    #     return estimate
 
                                
 

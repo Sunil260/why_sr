@@ -59,69 +59,26 @@ class ContinuousServoPWM:
         time.sleep(0.2)   # helps prevent an exit twitch
         self.pwm.stop()
 
-class AngleServoPWM:
-
-    PERIOD_US = 20000  # 50 Hz => 20 ms period
-
-    def __init__(self, pwm_channel=2, chip=0, min_us=1000, max_us=2000, min_angle=0, max_angle=180, hz=50):
-        self.min_us = int(min_us)
-        self.max_us = int(max_us)
-        self.min_angle = min_angle
-        self.max_angle = max_angle
-
-        self.pwm = HardwarePWM(pwm_channel=pwm_channel, hz=hz, chip=chip)
-        self.pwm.start(self._duty_from_us(self.min_us))  # initialize at min angle
-
-    def _clamp_us(self, us: int) -> int:
-        return max(self.min_us, min(self.max_us, int(us)))
-
-    def _duty_from_us(self, pulse_us: int) -> float:
-        pulse_us = self._clamp_us(pulse_us)
-        return (pulse_us / self.PERIOD_US) * 100.0
-
-    def _us_from_angle(self, angle_deg: float) -> int:
-        # map angle to pulse width linearly
-        angle_deg = max(self.min_angle, min(self.max_angle, angle_deg))
-        return int(self.min_us + (self.max_us - self.min_us) * (angle_deg - self.min_angle) / (self.max_angle - self.min_angle))
-
-    def set_angle(self, angle_deg: float):
-        """Move servo to a specific angle in degrees."""
-        pulse_us = self._us_from_angle(angle_deg)
-        self.pwm.change_duty_cycle(self._duty_from_us(pulse_us))
-
-    def close(self):
-        """Stop PWM output."""
-        self.pwm.stop()
-
-
 
 if __name__ == "__main__":
     # GPIO18 on Pi 5 commonly maps to pwm_channel=2 for this library.
-    # servo = ContinuousServoPWM(pwm_channel=2, chip=0, center_us=1500)
+    servo = ContinuousServoPWM(pwm_channel=2, chip=0, center_us=1500)
 
-
-    # try:
-    #     servo.stop()
-    #     time.sleep(1)
-
-    #     servo.ccw(0.55, delta_us=100)
-    #     time.sleep(0.5)
-
-    #     servo.cw(0.55, delta_us=100) 
-    #     time.sleep(0.5)
-
-    #     servo.stop()
-    #     time.sleep(2)
-
-    # finally:
-    #     servo.close()
-
-    servo = AngleServoPWM(pwm_channel=2, chip=0)
 
     try:
-        # sweep from 0° to 180°
-        for angle in range(20, 40, 30):
-            servo.set_angle(angle)
-            time.sleep(0.5)
+        servo.stop()
+        time.sleep(1)
+
+        servo.ccw(0.55, delta_us=100)
+        time.sleep(0.5)
+
+        servo.cw(0.55, delta_us=100) 
+        time.sleep(0.5)
+
+        servo.stop()
+        time.sleep(2)
+
     finally:
         servo.close()
+
+   
