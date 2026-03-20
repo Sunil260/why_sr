@@ -126,6 +126,7 @@ def main():
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()
+    green_box_aligner = AlignmentController()
     approach_targer = ApproachController(omega_max=0.2,v_max=0.2,pickup_y=400,x_tol=0.05)
     turn_controller = TurnUntilController()
     drivebase = DriveBase()
@@ -149,6 +150,7 @@ def main():
             frame = cam.get_frame()
 
             blue = p.detect_target_cheap(frame, min_area=5000)
+            green = p.detect_green_box(frame,min_area=100)
 
             match current_state:
                 case RobotState.LINE_FOLLOW:
@@ -197,22 +199,24 @@ def main():
                     # Transition: if line detected, go to next state
                     if estimate.detected:
                         print("Red line detected, stopping turn.")
-                        current_state = State.RED_LINE_FOLLOW
-
-                case RobotState.LINE_FOLLOW:
-                    turn_until_red_line()
-                    if red_line_seen():          # Transition criteria
                         current_state = RobotState.RED_LINE_FOLLOW
 
+                case RobotState.LINE_FOLLOW:
+                    if green.detected:
+                        drivebase.stop()
+                        current_state = RobotState.GREEN_ALIGN
+                    
+                    run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
+
                 case RobotState.GREEN_ALIGN:
-                    follow_red_line()
-                    if green_box_seen():         # Transition criteria
-                        current_state = RobotState.MOVE_TO_BOX
+                    green_box_aligner
+                    current_state = RobotState.OPEN_CLAW
 
                 case RobotState.OPEN_CLAW:
-                    move_forward_to_box()
-                    if reached_box():            # Transition criteria
-                        current_state = RobotState.OPEN_CLAW
+                    drivebase.stop()
+                    Claw.open()
+                    time.sleep(2)
+  
 
     except KeyboardInterrupt:
         print("Stopping robot")
