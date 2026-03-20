@@ -19,6 +19,7 @@ LOOKAHEAD = 50
 class RobotState(Enum):
     LINE_FOLLOW = 1
     TARGET_MODE = 2
+    LEGO_ALIGN = 3
 
 def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed):
     
@@ -60,12 +61,14 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
 
             # Compute alignment command
             command = target_aligner.compute(result, dt)
-            if command.omega > 0:
-                drivebase.set_Velocity(command.v , max(command.omega, 0.2))
-                print(command.v, command.omega)
-            else:
-                drivebase.set_Velocity(command.v , min(command.omega, -0.2))
-                print(command.v, command.omega)
+
+            omega = command.omega
+
+            # Deadzone compensation
+            if abs(omega) > 0.01:
+                omega = np.sign(omega) * max(abs(omega), 0.17)
+
+            drivebase.set_Velocity(0.0, omega)   
 
         else:
             print("Blue target not detected, stopping.")
@@ -74,7 +77,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
     else:
         # Step 2: Approach the Lego target
         result = p.detect_legoman(frame)
-        drivebase.stop()
+        # drivebase.stop()
         if result.detected:
             print(
                 f"Approaching: detected={result.detected} "
@@ -84,16 +87,19 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
             )
             # Compute approach command
             command = approach_controller.compute(result, dt)
-        #     print(f"Approach command → v: {command.v:.2f}, omega: {command.omega:.2f}")
-        #     if command.omega > 0:
-        #         drivebase.set_Velocity(command.v , max(command.omega, 0.2))
-        #         print(command.v, command.omega)
-        #     else:
-        #         drivebase.set_Velocity(command.v , min(command.omega, -0.2))
-        #         print(command.v, command.omega)
-        # else:
-        #     print("Lego target not detected, stopping.")
-        #     drivebase.stop()
+            print(f"Approach command → v: {command.v:.2f}, omega: {command.omega:.2f}")
+
+
+            omega = command.omega
+
+            # Apply deadzone compensation ONLY if turning is needed
+            if abs(omega) > 0.01:   # small threshold to ignore noise
+                omega = np.sign(omega) * max(abs(omega), 0.2)
+
+            drivebase.set_Velocity(command.v, omega)
+        else:
+            print("Lego target not detected, stopping.")
+            drivebase.stop()
 
     return aligned
 
@@ -102,18 +108,18 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,False)
+    p = Perception(cam,True)
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()
-    approach_targer = ApproachController()
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.2,pickup_y=400,x_tol=0.05)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
     line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
 
 
-    state = RobotState.LINE_FOLLOW #set state
+    state = RobotState.TARGET_MODE #set state
 
 
     prev_t = time.monotonic()

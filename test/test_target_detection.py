@@ -15,7 +15,7 @@ import numpy as np
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,False)
+    p = Perception(cam,True)
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()

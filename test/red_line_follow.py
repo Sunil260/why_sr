@@ -23,7 +23,7 @@ def main():
     cam = OpenCVCamera()
     p = Perception(cam, False)
     drive = DriveBase()
-    line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
+    line_follower = LineFollowingController(k_heading_slow=1, v_min=0.25, v_max=0.7, omega_max=0.15)
 
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
 
@@ -53,11 +53,11 @@ def main():
             print(f"lin_v = {command.v:.2f} " f"omega = {command.omega:.2f}")
             drive.set_Velocity(command.v, command.omega)
 
-            # print(
-            #     f"x_center={red_line_data.x_error_center:.2f}  "
-            #     f"x_ahead={red_line_data.x_error_ahead:.2f}  "
-            #     f"heading={np.degrees(red_line_data.heading_error_ahead):.3f}  "
-            # )
+            print(
+                f"x_center={red_line_data.x_error_center:.2f}  "
+                f"x_ahead={red_line_data.x_error_ahead:.2f}  "
+                f"heading={np.degrees(red_line_data.heading_error_ahead):.3f}  "
+            )
 
     except KeyboardInterrupt:
         print("Stopping robot")
