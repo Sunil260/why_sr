@@ -170,7 +170,8 @@ def main():
                 case RobotState.TARGET_MODE:
                     print(f"In target state now")
                     print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
-                    aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
+                    drivebase.stop()
+                    # aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
 
 
 

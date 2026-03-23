@@ -16,7 +16,8 @@ def main():
 
     cam = OpenCVCamera()
     p = Perception(cam,False)
-    lw_detected = True
+    lw_detected = False
+
     aligned = False
     target_aligner = AlignmentController()
     green_aligner = AlignmentController()
@@ -69,7 +70,8 @@ def main():
                 
                 if not aligned:
                     
-                    result = p.detect_green_box(frame) #detect green box
+                    # result = p.detect_green_box(frame) #detect green box
+                    result = p.analyze_target(frame)
                     # TargetEstimate(detected=True, centroid_x=red_cx, centroid_y=red_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
                     if result.detected:
                         print(
@@ -82,13 +84,13 @@ def main():
                             aligned = True
 
                         command = green_aligner.compute(result, dt)
-                        # print(command.v, command.omega)
+                        print(command.v, command.omega)
                         omega = command.omega
 
                         if abs(omega) < 0.15:
                             omega = 0.0
                         
-                        p.show_green_debug(frame, p.last_green_mask, result, command.v, omega)
+                        # p.show_green_debug(frame, p.last_green_mask, result, command.v, omega)
 
 
                         drivebase.set_Velocity(command.v, omega)
