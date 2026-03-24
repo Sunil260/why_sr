@@ -35,11 +35,14 @@ class Claw:
         self.servo = Servo(servo_pin)
         #self.beam = BeamBreak(pin=beam_pin, debounce=beam_debounce)
 
+        self.close_angle = close_angle
+        self.open_angle = open_angle
+
     def close(self):
-        self.servo.value(close_angle/90)
+        self.servo.value = self.close_angle/90
 
     def open(self):
-        self.servo.value(open_angle/90)
+        self.servo.value = self.open_angle/90
 
     # def is_object_detected(self):
     #     return self.beam.beam_state()

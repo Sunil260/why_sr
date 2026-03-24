@@ -101,7 +101,7 @@ class LineFollowingController(BaseController):
     
 class AlignmentController(BaseController):
     def __init__(self, omega_max=0.3, x_tol=0.01): #changing from 0.025
-        self.align_pd = PDController(kp=0.5, kd=0.075)
+        self.align_pd = PDController(kp=0.5, kd=0.1)
         self.omega_max = omega_max
         self.x_tol = x_tol
 
@@ -117,8 +117,8 @@ class AlignmentController(BaseController):
         return DriveCommand(v=0.0, omega=omega)
 
 class ApproachController(BaseController):
-    def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 400, x_tol = 0.05):
-        self.lateral_pd = PDController(kp=0.2, kd=0)
+    def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 350, x_tol = 0.05):
+        self.lateral_pd = PDController(kp=0.2, kd=0.02)
         self.Kpy = 0.005
         self.omega_max = omega_max
         self.v_max = v_max
@@ -132,13 +132,16 @@ class ApproachController(BaseController):
         omega = self.lateral_pd.compute(estimate.e_x, dt)
         omega = max(-self.omega_max, min(self.omega_max, omega))
 
+        if abs(estimate.e_x) < 0.05:
+            omega = 0.0
+
         if (estimate.centroid_y >= self.pickup_y) and (abs(estimate.e_x)<= self.x_tol):
             return DriveCommand(v=0.0, omega=0.0)
         
 
         # Example: smaller detected area -> farther away -> move faster
         v = self.Kpy * (self.pickup_y - estimate.centroid_y)
-        v = max(0.05, min(self.v_max, v))
+        v = max(0.1, min(self.v_max, v))
 
      
         return DriveCommand(v=v, omega=omega)
