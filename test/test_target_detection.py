@@ -21,7 +21,7 @@ def main():
 
     aligned = False
     target_aligner = AlignmentController()
-    green_aligner = AlignmentController()
+    # green_aligner = AlignmentController()
     approach_targer = ApproachController()
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
@@ -79,7 +79,7 @@ def main():
                             f"{result.detected} "
                             f"e_x = {np.round(result.error_x,2 )} "
                             f"e_y = {np.round(result.error_y,2)} "
-                            f"Blue area = {np.round(result.area,2)} "
+                            # f"Blue area = {np.round(result.area,2)} "
                         )
                         if abs(result.error_x) < target_aligner.x_tol:
                             aligned = True
@@ -88,8 +88,15 @@ def main():
                         print(command.v, command.omega)
                         omega = command.omega
 
-                        if abs(omega) < 0.15:
+                        if abs(result.error_x) < target_aligner.x_tol:
                             omega = 0.0
+                            aligned = True
+                        else:
+                            omega = command.omega
+
+                            # apply minimum turn speed ONLY if turning is needed
+                            if abs(omega) > 0.01:
+                                omega = np.sign(omega) * max(abs(omega), 0.2)
                         
                         # p.show_green_debug(frame, p.last_green_mask, result, command.v, omega)
 
