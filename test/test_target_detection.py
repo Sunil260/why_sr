@@ -10,7 +10,8 @@ from controllers import LineFollowingController
 from drivebase import DriveBase
 import numpy as np
 
-
+BASE_SPEED = 0.3
+LOOKAHEAD = 100
 
 def main():
 
@@ -78,12 +79,12 @@ def main():
                             f"{result.detected} "
                             f"e_x = {np.round(result.error_x,2 )} "
                             f"e_y = {np.round(result.error_y,2)} "
-                            f"Green area = {np.round(result.area,2)} "
+                            f"Blue area = {np.round(result.area,2)} "
                         )
-                        if abs(result.error_x) < green_aligner.x_tol:
+                        if abs(result.error_x) < target_aligner.x_tol:
                             aligned = True
 
-                        command = green_aligner.compute(result, dt)
+                        command = target_aligner.compute(result, dt)
                         print(command.v, command.omega)
                         omega = command.omega
 

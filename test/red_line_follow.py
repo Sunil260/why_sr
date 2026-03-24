@@ -15,7 +15,7 @@ from controllers import LineFollowingController
 
 # Controller gains
 BASE_SPEED = 0.3
-LOOKAHEAD = 50
+LOOKAHEAD = 100
 
 
 def main():

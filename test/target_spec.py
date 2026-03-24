@@ -12,8 +12,8 @@ import numpy as np
 from enum import Enum
 
 # Controller gains
-BASE_SPEED = 0.3
-LOOKAHEAD = 50
+BASE_SPEED = 0.2
+LOOKAHEAD = 100
 
 # trying to do a simple state machine between line follow mode --> target mode
 class RobotState(Enum):
@@ -25,16 +25,24 @@ def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_spee
     
     red_line_data = p.detect_red_line(frame, lookahead)
     p.show_line_debug(frame, red_line_data, lookahead)
+    blue = p.detect_target_cheap(frame, min_area=2000)
 
     if not red_line_data.detected:
         print("Line lost")
         drivebase.stop()
-        time.sleep(0.05)
         return   
 
     command = line_follower.compute(red_line_data, dt, base_speed)
     print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
     drivebase.set_Velocity(command.v, command.omega)
+
+    if blue.detected:
+        print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
+        drivebase.stop()
+        time.sleep(1)
+        return RobotState.TARGET_MODE
+    
+    return RobotState.LINE_FOLLOW
 
 def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller, aligned):
     """
@@ -136,42 +144,22 @@ def main():
             frame = cam.get_frame()
 
 # check for blue
-            blue = p.detect_target_cheap(frame, min_area=5000)
+            
 
             # match-case for FSM
             match state:
-                case RobotState.LINE_FOLLOW:
-
-                    # transistion to blue if blue detected
-                    if blue.detected:
-                        print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
-                        drivebase.stop()
-                        time.sleep(1)
-                        state = RobotState.TARGET_MODE
-                        continue
+                case RobotState.LINE_FOLLOW:                
                     
                     # red line follow here
                     run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
-                    # print("Starting red line follow")
-                    # red_line_data = p.detect_red_line(frame, 50)  # LOOKAHEAD
-                    # p.show_line_debug(frame, red_line_data, 50)
 
-                    # if not red_line_data.detected:
-                    #     print("Line lost")
-                    #     drivebase.stop()
-                    #     time.sleep(0.05)
-                    #     continue
-
-                    # command = line_follower.compute(red_line_data, dt, 0.3)  # BASE_SPEED
-                    # print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
-                    # drivebase.set_Velocity(command.v, command.omega)
 
 
                 case RobotState.TARGET_MODE:
                     print(f"In target state now")
                     print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
                     drivebase.stop()
-                    # aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
+                    aligned = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
 
 
 
