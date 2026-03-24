@@ -71,25 +71,26 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
             command = target_aligner.compute(result, dt)
 
             omega = command.omega
+            print(f"omega: {omega}")
             # v = command.velocity
 
             # Deadzone compensation
-            if abs(result.error_x) < target_aligner.x_tol:
-                omega = 0.0
-                aligned = True
-            else:
-                omega = command.omega
+            # if abs(result.error_x) < target_aligner.x_tol:
+            #     omega = 0.0
+                # aligned = True
+            # else:
+            #     omega = command.omega
 
-                # apply minimum turn speed ONLY if turning is needed
-                if abs(omega) > 0.01:
-                    omega = np.sign(omega) * max(abs(omega), 0.2)
+                # # apply minimum turn speed ONLY if turning is needed
+                # if abs(omega) > 0.01:
+                #     omega = np.sign(omega) * max(abs(omega), 0.2)
 
             drivebase.set_Velocity(0, omega)   
 
         else:
             print("Blue target not detected, stopping.")
             drivebase.stop()
-            return RobotState.LEGO_ALIGN
+            return RobotState.TARGET_MODE
 
     return RobotState.TARGET_MODE
 
@@ -139,7 +140,7 @@ def grab_lego(claw):
 def turn_until_line(p, frame, dt, drivebase, turn_controller):
 
     # Detect red line in current frame
-    red_line_data = p.detect_red_line(frame, lookahead=100)  # adjust lookahead if needed
+    red_line_data = p.detect_red_line(frame, lookahead_y=100)  # adjust lookahead if needed
 
     # Compute drive command from controller
     command = turn_controller.compute(red_line_data, dt)
@@ -159,11 +160,11 @@ def turn_until_line(p, frame, dt, drivebase, turn_controller):
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,False)
+    p = Perception(cam,True)
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController()
-    approach_targer = ApproachController(omega_max=0.2,v_max=0.2,pickup_y=400,x_tol=0.05)
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.2,pickup_y=225,x_tol=0.05)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
     line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
@@ -172,7 +173,8 @@ def main():
     turn_controller = TurnUntilLineController()
 
     state = RobotState.LINE_FOLLOW #set state
-
+    state = RobotState.TURN
+   
     prev_t = time.monotonic()
     claw.open()
 
@@ -198,8 +200,6 @@ def main():
                     # print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
                     # drivebase.stop()
                     state = run_target_mode(p,frame,dt,drivebase,target_aligner,approach_targer,aligned)
-                    if aligned:
-                        print("aligned")    
 
                 case RobotState.LEGO_ALIGN:
                     state = run_lego_align(p,frame,dt,drivebase,approach_targer)
@@ -208,7 +208,8 @@ def main():
                     state = grab_lego(claw)
 
                 case RobotState.TURN:
-                    state = run_until_line(p,frame,dt,drivebase,turn_controller)
+                    # pass
+                    state = turn_until_line(p,frame,dt,drivebase,turn_controller)
 
 
 

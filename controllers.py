@@ -101,7 +101,7 @@ class LineFollowingController(BaseController):
     
 class AlignmentController(BaseController):
     def __init__(self, omega_max=0.3, x_tol=0.01): #changing from 0.025
-        self.align_pd = PDController(kp=0.5, kd=0.1)
+        self.align_pd = PDController(kp=1.5, kd=0.5)
         self.omega_max = omega_max
         self.x_tol = x_tol
 
@@ -117,9 +117,9 @@ class AlignmentController(BaseController):
         return DriveCommand(v=0.0, omega=omega)
 
 class ApproachController(BaseController):
-    def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 350, x_tol = 0.05):
-        self.lateral_pd = PDController(kp=0.2, kd=0.02)
-        self.Kpy = 0.005
+    def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 300, x_tol = 0.05):
+        self.lateral_pd = PDController(kp=0.05, kd=0.02)
+        self.Kpy = 0.002
         self.omega_max = omega_max
         self.v_max = v_max
         self.pickup_y = pickup_y
@@ -132,7 +132,7 @@ class ApproachController(BaseController):
         omega = self.lateral_pd.compute(estimate.e_x, dt)
         omega = max(-self.omega_max, min(self.omega_max, omega))
 
-        if abs(estimate.e_x) < 0.05:
+        if abs(estimate.e_x) < 0.1:
             omega = 0.0
 
         if (estimate.centroid_y >= self.pickup_y) and (abs(estimate.e_x)<= self.x_tol):
@@ -147,7 +147,7 @@ class ApproachController(BaseController):
         return DriveCommand(v=v, omega=omega)
     
 class TurnUntilLineController(BaseController):
-    def __init__(self, search_omega=0.8):
+    def __init__(self, search_omega=0.2):
         self.search_omega = search_omega
 
     def compute(self, estimate: LineEstimate, dt: float):

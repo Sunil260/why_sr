@@ -82,8 +82,11 @@ class Perception:
         no_res = LegoEstimate(detected = False, centroid_x = None, centroid_y =None, e_x = None, e_y = None, area =None)
         
         # -------- Yellow HSV RANGE --------
-        l_yellow = np.array([18,120,80])
-        u_yellow = np.array([40,255,255])
+        # l_yellow = np.array([18,120,80])
+        # u_yellow = np.array([40,255,255])
+        l_yellow = np.array([20, 140, 120])
+        u_yellow = np.array([35, 255, 255])
+
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         y_mask = cv.inRange(hsv, l_yellow,u_yellow)
 
@@ -338,17 +341,15 @@ class Perception:
         #filtering to both 
         # kernel = cv.getStructuringElement(cv.MORPH_RECT, (5, 5))
 
-        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (7, 7))
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
 
-        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=3)
-
+   
         red_frame = cv.morphologyEx(red_frame, cv.MORPH_OPEN, kernel, iterations=1)
-        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=3)
+        red_frame = cv.morphologyEx(red_frame, cv.MORPH_CLOSE, kernel, iterations=2)
         
-        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=3)
-
+      
         blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_OPEN, kernel, iterations=1)
-        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=3)
+        blue_frame = cv.morphologyEx(blue_frame, cv.MORPH_CLOSE, kernel, iterations=2)
 
 
         #find contours - image may have acclusiong try to fit eclipse and return the centroid
@@ -376,14 +377,8 @@ class Perception:
 
         # check centers are close to eachother
         center_dist = np.hypot(blue_cx - red_cx, blue_cy - red_cy)
-        if center_dist > 100:
-            print("Blue and red contours are not close enough, likely not the target")
-            return no_res
-
-        #check area of blue> red
-        if blue_w * blue_h < red_w * red_h:
-            print(f"Blue contour area is smaller than red, likely not the target")
-            return no_res
+     
+        
 
         #calculate and report the errors 
         avg_cx = (blue_cx + red_cx) / 2
@@ -391,13 +386,13 @@ class Perception:
         center_x = frame.shape[1] // 2
         center_y = frame.shape[0] // 2
 
-        error_x = avg_cx - center_x
-        error_y = avg_cy - center_y
+        error_x = red_cx - center_x
+        error_y = red_cy - center_y
 
         error_x = error_x / (frame.shape[1]/2.0)
         error_y = error_y / (frame.shape[0]/2.0)
 
-        estimate = TargetEstimate(detected=True, centroid_x=avg_cx, centroid_y=avg_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
+        estimate = TargetEstimate(detected=True, centroid_x=red_cx, centroid_y=red_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
 
         if self.debug:
             self.show_target_debug(
