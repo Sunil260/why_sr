@@ -1,0 +1,32 @@
+import cv2
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from perception import OpenCVCamera, Perception
+from time import sleep
+
+cam = OpenCVCamera()
+perception = Perception(cam)
+
+while True:
+
+    frame = cam.get_frame()
+
+    res = perception.detect_red_line(frame)
+
+    if res.detected:
+        print(
+            f"x_c={res.x_error_center:.1f} "
+            f"x_fwd={res.x_error_ahead:.1f} "
+            f"heading={res.heading_error_ahead:.3f}"
+        )
+        sleep(0.25)
+
+    # cv2.imshow("Red Line Test", frame)
+
+    if cv2.waitKey(1) == ord("q"):
+        break
+
+cam.release()
+cv2.destroyAllWindows()

@@ -1,0 +1,12 @@
+[project]
+name = "why-sr"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gpiozero>=2.0.1;  sys_platform == 'linux'",
+    "opencv-python>=4.13.0.92",
+    "rpi-hardware-pwm>=0.3.1;  sys_platform == 'linux'",
+    "rpi-lgpio>=0.6; sys_platform == 'linux'",
+]
