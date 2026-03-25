@@ -38,6 +38,11 @@ class Claw:
         self.close_angle = close_angle
         self.open_angle = open_angle
 
+    def set_angle(self, angle):
+        # Clamp to safe range
+        angle = max(-90, min(90, angle))
+        self.servo.value = angle / 90.0
+
     def close(self):
         self.servo.value = self.close_angle/90
 
