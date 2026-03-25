@@ -119,7 +119,7 @@ class AlignmentController(BaseController):
 class ApproachController(BaseController):
     def __init__(self, omega_max=0.25, v_max=0.25, pickup_y = 300, x_tol = 0.05):
         self.lateral_pd = PDController(kp=0.05, kd=0.02)
-        self.Kpy = 0.002
+        self.Kpy = 0.2
         self.omega_max = omega_max
         self.v_max = v_max
         self.pickup_y = pickup_y
@@ -141,7 +141,7 @@ class ApproachController(BaseController):
 
         # Example: smaller detected area -> farther away -> move faster
         v = self.Kpy * (self.pickup_y - estimate.centroid_y)
-        v = max(0.15, min(self.v_max, v))
+        v = max(0.25, min(self.v_max, v))
 
      
         return DriveCommand(v=v, omega=omega)

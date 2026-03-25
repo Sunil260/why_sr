@@ -140,7 +140,7 @@ class Perception:
 
         return result
  
-    def detect_red_line(self, frame, lookahead_y=200):
+    def detect_red_line(self, frame, lookahead_y=200, lateral_erorr_y = 350):
         # function to follow the red line (return the cross track error and heading angle error)
         no_res = LineEstimate(detected=False, x_error_center=0.0, x_error_ahead=0.0, heading_error_ahead=0.0)
         # -------- RED HSV RANGE --------
@@ -163,6 +163,7 @@ class Perception:
         center_x = frame.shape[1] // 2
         center_y = frame.shape[0] // 2
         lookahead_y = lookahead_y
+         
 
         #wants: lateral e at center, lateral e at lookahead, heading error at lookahead
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -195,7 +196,8 @@ class Perception:
 
         #main driving error (center to the line at the same row)
         t_center = (center_y - y0_fit) / vy
-        x_error_center = (x0_fit + t_center * vx) - center_x
+        t_lateral_error = (lateral_erorr_y - y0_fit) / vy
+        x_error_center = (x0_fit + t_lateral_error * vx) - center_x
 
         x_error_center = x_error_center / (frame.shape[1]/2.0)
         # normalize error
