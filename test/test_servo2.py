@@ -1,26 +1,43 @@
 from gpiozero import Servo
 import time
 
-servo = Servo(18)
+# servo = Servo(18)
+
+# try:
+#     # print("mid")
+#     # servo.mid()
+#     # time.sleep(5)
+#     # print("max")
+#     # servo.max()
+#     # time.sleep(2)
+#     # print("return")
+#     # servo.min()
+#     # time.sleep(2)
+#     # servo.detach()
+
+#     while(True):
+#         angle = input("servo angle").strip().lower()
+#         time.sleep(4)
+#         print("set")
+#         servo.value = (float(angle)/90)
+#         time.sleep(1)
+
+# except KeyboardInterrupt:
+#     servo.detach()
+import cv2
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import time
+from manipulator import Claw
+
+claw = Claw()
 
 try:
-    # print("mid")
-    # servo.mid()
-    # time.sleep(5)
-    # print("max")
-    # servo.max()
-    # time.sleep(2)
-    # print("return")
-    # servo.min()
-    # time.sleep(2)
-    # servo.detach()
+    for angle in [-60, -30, 0, 10, 20, 30]:
+        print(f"Angle: {angle}")
+        claw.set_angle(angle)
+        time.sleep(1.5)
 
-    while(True):
-        angle = input("servo angle").strip().lower()
-        time.sleep(4)
-        print("set")
-        servo.value = (float(angle)/90)
-        time.sleep(1)
-
-except KeyboardInterrupt:
-    servo.detach()
+finally:
+    claw.end_servo()
