@@ -15,7 +15,8 @@ from enum import Enum
 
 # Controller gains
 BASE_SPEED = 0.2
-LOOKAHEAD = 50
+#.45
+LOOKAHEAD = 75
 
 # trying to do a simple state machine between line follow mode --> target mode
 class RobotState(Enum):
@@ -24,8 +25,10 @@ class RobotState(Enum):
     LEGO_ALIGN = 3
     INTAKE = 4
     TURN = 5
+    HOME = 6
+    RECOVERY = 7
 
-def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed):
+def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed,home,last_omega):
     
     red_line_data = p.detect_red_line(frame, lookahead)
     p.show_line_debug(frame, red_line_data, lookahead)
@@ -34,19 +37,22 @@ def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_spee
     if not red_line_data.detected:
         print("Line lost")
         drivebase.stop()
-        return RobotState.LINE_FOLLOW  
+        return RobotState.RECOVERY, last_omega  
 
     command = line_follower.compute(red_line_data, dt, base_speed)
+    last_omega = command.omega
+
     print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
     drivebase.set_Velocity(command.v, command.omega)
 
-    if blue.detected:
+    if blue.detected and not home:
         print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
-        drivebase.stop()
-        time.sleep(1)
-        return RobotState.TARGET_MODE
+        drivebase.stop(coast = False)
+        print("BRAKEEEEE")
+
+        return RobotState.TARGET_MODE, last_omega
     
-    return RobotState.LINE_FOLLOW
+    return RobotState.LINE_FOLLOW, last_omega
 
 def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller, aligned):
 
@@ -75,15 +81,15 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
             # v = command.velocity
 
             # Deadzone compensation
-            # if abs(result.error_x) < target_aligner.x_tol:
-            #     omega = 0.0
-                # aligned = True
-            # else:
-            #     omega = command.omega
+            if abs(result.error_x) < target_aligner.x_tol:
+                omega = 0.0
+                aligned = True
+            else:
+                omega = command.omega
 
-                # # apply minimum turn speed ONLY if turning is needed
-                # if abs(omega) > 0.01:
-                #     omega = np.sign(omega) * max(abs(omega), 0.2)
+                # apply minimum turn speed ONLY if turning is needed
+                if abs(omega) > 0.01:
+                    omega = np.sign(omega) * max(abs(omega), 0.2)
 
             drivebase.set_Velocity(0, omega)   
 
@@ -134,46 +140,85 @@ def grab_lego(claw):
 
     print("Grabbing Lego → closing claw")
     claw.close()           # close the claw
-    time.sleep(0.5)        # optional small delay to ensure claw closes
+    # time.sleep(0.5)        # optional small delay to ensure claw closes
+    print("Gdone close")
     return RobotState.TURN      # return the next FSM state
 
 def turn_until_line(p, frame, dt, drivebase, turn_controller):
 
-    # Detect red line in current frame
-    red_line_data = p.detect_red_line(frame, lookahead_y=100)  # adjust lookahead if needed
+    red_line_data = p.detect_red_line(frame, lookahead_y=100)
 
-    # Compute drive command from controller
     command = turn_controller.compute(red_line_data, dt)
 
-    # Apply command to robot
-    drivebase.set_Velocity(command.v, command.omega)
+    drivebase.set_Velocity(0, 0.2)
 
-    # Check if line detected → transition to next state
-    if red_line_data.detected:
-        print("Red line detected → stopping turn")
-        drivebase.stop()
+    if not red_line_data.detected: #i want this to be less than a certain area of red but ok for now...
+        print("No red detected → stop turn")
+        drivebase.stop(coast=False)
         return RobotState.LINE_FOLLOW
 
-    # Keep spinning if not detected
-    return RobotState.TURN  # stay in turn state
+    return RobotState.TURN
+
+def run_recovery(p, frame, dt, drivebase, last_omega):
+
+    red_line_data = p.detect_red_line(frame, lookahead_y=100)
+
+    # If line found → go back
+    if red_line_data.detected:
+        print("Line reacquired → back to line follow")
+        drivebase.stop(coast=False)
+        return RobotState.LINE_FOLLOW, last_omega
+
+    # Turn opposite of last omega
+    recovery_omega = np.sign(last_omega) * 0.2
+
+    # If last omega was ~0 (edge case), just pick a direction
+    if abs(last_omega) < 0.01:
+        recovery_omega = 0.2
+
+    print(f"Recovering... omega = {recovery_omega:.2f}")
+
+    drivebase.set_Velocity(0.0, recovery_omega)
+
+    return RobotState.RECOVERY, last_omega
+
+def run_home(p, frame, dt, drivebase, line_follower, lookahead, base_speed,home,last_omega):
+    
+    red_line_data = p.detect_red_line(frame, lookahead)
+    p.show_line_debug(frame, red_line_data, lookahead)
+
+    if not red_line_data.detected:
+        print("Line lost")
+        drivebase.stop()
+        return RobotState.RECOVERY, last_omega  
+
+    command = line_follower.compute(red_line_data, dt, base_speed)
+    last_omega = command.omega
+
+    print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
+    drivebase.set_Velocity(command.v, command.omega)
+    
+    return RobotState.LINE_FOLLOW, last_omega
+
 
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,True)
+    p = Perception(cam,False)
     lw_detected = False
     aligned = False
-    target_aligner = AlignmentController()
-    approach_targer = ApproachController(omega_max=0.2,v_max=0.2,pickup_y=225,x_tol=0.05)
+    target_aligner = AlignmentController(omega_max=0.2)
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=300,x_tol=0.05)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
-    line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
+    line_follower = LineFollowingController(k_heading_slow=3, v_min=0.25, v_max=0.7, omega_max=0.3)
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
     claw = Claw()
     turn_controller = TurnUntilLineController()
+    last_omega = 0.0
 
     state = RobotState.LINE_FOLLOW #set state
-    state = RobotState.TURN
+    # state = RobotState.TURN
    
     prev_t = time.monotonic()
     claw.open()
@@ -194,7 +239,8 @@ def main():
                 case RobotState.LINE_FOLLOW:                
                     
                     # red line follow here
-                    state = run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
+                    home = False
+                    state, last_omega = run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED,home,last_omega)
 
                 case RobotState.TARGET_MODE:
                     # print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
@@ -210,6 +256,13 @@ def main():
                 case RobotState.TURN:
                     # pass
                     state = turn_until_line(p,frame,dt,drivebase,turn_controller)
+
+                case RobotState.HOME:
+                    home = True
+                    state =  run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED,home)
+
+                case RobotState.RECOVERY:
+                    state, last_omega = run_recovery(p, frame, dt, drivebase, last_omega)
 
 
 

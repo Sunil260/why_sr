@@ -84,9 +84,11 @@ class Perception:
         # -------- Yellow HSV RANGE --------
         # l_yellow = np.array([18,120,80])
         # u_yellow = np.array([40,255,255])
-        l_yellow = np.array([20, 140, 120])
-        u_yellow = np.array([35, 255, 255])
+        # l_yellow = np.array([20, 140, 120])
+        # u_yellow = np.array([35, 255, 255])
 
+        l_yellow = np.array([50, 70, 110])
+        u_yellow = np.array([80, 220, 240])
         hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
         y_mask = cv.inRange(hsv, l_yellow,u_yellow)
 
@@ -169,7 +171,7 @@ class Perception:
             return no_res
 
         c = max(contours, key=cv.contourArea)
-        if cv.contourArea(c) < 200:
+        if cv.contourArea(c) < 500: #adjusting this val for turn until
             return no_res
 
         #fitting a line to the contour points reshape for [[x,y], [x,y], ...] to fit a line to 
@@ -280,8 +282,12 @@ class Perception:
         hsv = cv.cvtColor(blur, cv.COLOR_BGR2HSV)
 
         #blue mask outer ring + some smoothing
-        lower_blue = np.array([95, 80, 40])
-        upper_blue = np.array([130, 255, 255])
+        # lower_blue = np.array([95, 80, 40])
+        # upper_blue = np.array([130, 255, 255])
+        # lower_blue = np.array([100, 100, 100])
+        # upper_blue = np.array([120, 255, 255])
+        lower_blue = np.array([105, 120, 80])
+        upper_blue = np.array([135, 255, 255])
         blue_mask = cv.inRange(hsv, lower_blue, upper_blue)
 
         kernel = np.ones((3, 3), np.uint8)
@@ -316,8 +322,8 @@ class Perception:
 
 
         # -------- BLUE HSV RANGE --------
-        # lower_blue = np.array([95, 80, 40])
-        lower_blue = np.array([95, 50, 30])
+        lower_blue = np.array([95, 80, 40])
+        # lower_blue = np.array([95, 50, 30])
         upper_blue = np.array([130, 255, 255])
 
         blue_frame = cv.inRange(hsv, lower_blue, upper_blue)

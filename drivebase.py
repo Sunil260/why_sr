@@ -27,6 +27,7 @@ class DriveBase:
         #coast motors
         self.left_motor.stop(coast=coast)
         self.right_motor.stop(coast=coast)
+    
 
     def close(self):
         # stop motors and release resources

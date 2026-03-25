@@ -14,7 +14,7 @@ from controllers import LineFollowingController
 
 
 # Controller gains
-BASE_SPEED = 0.3
+BASE_SPEED = 0.5
 LOOKAHEAD = 100
 
 
@@ -23,7 +23,7 @@ def main():
     cam = OpenCVCamera()
     p = Perception(cam, False)
     drive = DriveBase()
-    line_follower = LineFollowingController(k_heading_slow=1, v_min=0.25, v_max=0.7, omega_max=0.15)
+    line_follower = LineFollowingController(k_heading_slow=2, v_min=0.25, v_max=0.7, omega_max=0.15)
 
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
 
