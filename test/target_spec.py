@@ -11,12 +11,16 @@ from drivebase import DriveBase
 import numpy as np
 from manipulator import Claw
 from controllers import TurnUntilLineController
+from collections import deque
 from enum import Enum
 
 # Controller gains
 BASE_SPEED = 0.65
 #.45
 LOOKAHEAD = 75
+
+omega_history = deque(maxlen=10)  # last 10 values
+home = False
 
 # trying to do a simple state machine between line follow mode --> target mode
 class RobotState(Enum):
@@ -28,19 +32,20 @@ class RobotState(Enum):
     HOME = 6
     RECOVERY = 7
 
-def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed,home,last_omega):
+def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed):
     
     red_line_data = p.detect_red_line(frame, lookahead)
     p.show_line_debug(frame, red_line_data, lookahead)
-    blue = p.detect_target_cheap(frame, min_area=2000)
+    blue = p.detect_target_cheap(frame, min_area=2500)
 
     if not red_line_data.detected:
         print("Line lost")
         drivebase.stop()
-        return RobotState.RECOVERY, last_omega  
+        return RobotState.RECOVERY 
 
     command = line_follower.compute(red_line_data, dt, base_speed)
-    last_omega = command.omega
+    
+    omega_history.append(command.omega)
 
     print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
     drivebase.set_Velocity(command.v, command.omega)
@@ -50,9 +55,9 @@ def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_spee
         drivebase.stop(coast = False)
         print("BRAKEEEEE")
 
-        return RobotState.TARGET_MODE, last_omega
+        return RobotState.TARGET_MODE
     
-    return RobotState.LINE_FOLLOW, last_omega
+    return RobotState.LINE_FOLLOW
 
 def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller, aligned):
 
@@ -142,63 +147,69 @@ def grab_lego(claw):
     claw.close()           # close the claw
     # time.sleep(0.5)        # optional small delay to ensure claw closes
     print("Gdone close")
+    for i in range(10):
+        omega_history.append(1)
+    home = True
     return RobotState.TURN      # return the next FSM state
 
 def turn_until_line(p, frame, dt, drivebase, turn_controller):
 
     red_line_data = p.detect_red_line(frame, lookahead_y=100)
 
-    command = turn_controller.compute(red_line_data, dt)
-
-    drivebase.set_Velocity(0, 0.3)
+    drivebase.set_Velocity(0, -0.3)
+    print(f"turning after target")
 
     if not red_line_data.detected: #i want this to be less than a certain area of red but ok for now...
-        print("No red detected → stop turn")
+        print(" red detected → stop turn")
         drivebase.stop(coast=False)
-        return RobotState.LINE_FOLLOW
+        return RobotState.HOME
 
     return RobotState.TURN
 
-def run_recovery(p, frame, dt, drivebase, last_omega):
+def run_recovery(p, frame, drivebase):
 
     red_line_data = p.detect_red_line(frame, lookahead_y=100)
 
     # If line found → go back
-    if red_line_data.detected:
+    if red_line_data.detected and not home:
         print("Line reacquired → back to line follow")
         drivebase.stop(coast=False)
-        return RobotState.LINE_FOLLOW, last_omega
+        return RobotState.LINE_FOLLOW
+    
+    elif red_line_data.detected and  home:
+        print("Line reacquired → back to line follow")
+        drivebase.stop(coast=False)
+        return RobotState.HOME
 
     # Turn opposite of last omega
-    recovery_omega = np.sign(last_omega) * 0.2
+    recovery_omega = get_recovery_direction() * 0.2
 
     # If last omega was ~0 (edge case), just pick a direction
-    if abs(last_omega) < 0.01:
+    if abs(np.mean(omega_history)) < 0.01:
         recovery_omega = 0.2
 
     print(f"Recovering... omega = {recovery_omega:.2f}")
 
     drivebase.set_Velocity(0.0, recovery_omega)
 
-    return RobotState.RECOVERY, last_omega
+    return RobotState.RECOVERY
 
-def run_home(p, frame, dt, drivebase, line_follower, lookahead, base_speed,home,last_omega):
-    
-    red_line_data = p.detect_red_line(frame, lookahead)
-    p.show_line_debug(frame, red_line_data, lookahead)
+def get_recovery_direction():
+    if len(omega_history) == 0:
+        return 1  # default direction
 
-    if not red_line_data.detected:
-        print("Line lost")
-        drivebase.stop()
-        return RobotState.RECOVERY, last_omega  
+    # Option 1: average (smooth)
+    avg = np.mean(omega_history)
 
-    command = line_follower.compute(red_line_data, dt, base_speed)
-    last_omega = command.omega
+    # # Option 2 (better): majority vote on sign
+    # signs = np.sign(omega_history)
+    # vote = np.sum(signs)
 
-    print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
-    drivebase.set_Velocity(command.v, command.omega)
-    
-    return RobotState.LINE_FOLLOW, last_omega
+    # if abs(vote) > 0:
+    #     return np.sign(vote)
+
+    # fallback if tied/noisy
+    return np.sign(avg) if abs(avg) > 0.01 else 1
 
 
 def main():
@@ -215,7 +226,7 @@ def main():
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
     claw = Claw()
     turn_controller = TurnUntilLineController()
-    last_omega = 0.0
+
 
     state = RobotState.LINE_FOLLOW #set state
     # state = RobotState.TURN
@@ -240,7 +251,7 @@ def main():
                     
                     # red line follow here
                     home = False
-                    state, last_omega = run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED,home,last_omega)
+                    state = run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
 
                 case RobotState.TARGET_MODE:
                     # print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
@@ -259,16 +270,18 @@ def main():
 
                 case RobotState.HOME:
                     home = True
-                    state =  run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED,home)
+                    state =  run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
 
                 case RobotState.RECOVERY:
-                    state, last_omega = run_recovery(p, frame, dt, drivebase, last_omega)
+                    state = run_recovery(p, frame, drivebase)
 
 
 
 
     except KeyboardInterrupt:
         print("Stopping robot")
+        claw.open()
+
 
     finally:
         drivebase.stop()
