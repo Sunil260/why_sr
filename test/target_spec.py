@@ -14,12 +14,15 @@ from controllers import TurnUntilLineController
 from collections import deque
 from enum import Enum
 
+
+
 # Controller gains
 BASE_SPEED = 0.65
 #.45
 LOOKAHEAD = 75
 
 omega_history = deque(maxlen=10)  # last 10 values
+target_history = deque(maxlen=10)  # last 10 values
 home = False
 
 # trying to do a simple state machine between line follow mode --> target mode
@@ -64,6 +67,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
     if not aligned:
         # Step 1: Align to blue
         result = p.analyze_target(frame)
+        target_history.append(result.error_x)  # store error_x for history
         if result.detected:
             print(
                 f"Aligning: detected={result.detected} "
@@ -79,6 +83,10 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
                 return RobotState.LEGO_ALIGN
 
             # Compute alignment command
+            #avg the error x for the result hist
+            if len(target_history) > 0:
+                result.error_x = np.mean(target_history)
+            
             command = target_aligner.compute(result, dt)
 
             omega = command.omega
@@ -219,7 +227,7 @@ def main():
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController(omega_max=0.2)
-    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=350,x_tol=0.05)
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=350,x_tol=0.08)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
     line_follower = LineFollowingController(k_heading_slow=5, v_min=0.25, v_max=0.7, omega_max=0.3)
@@ -250,7 +258,7 @@ def main():
                 case RobotState.LINE_FOLLOW:                
                     
                     # red line follow here
-                    home = False
+                
                     state = run_line_follow(p,frame,dt,drivebase,line_follower,LOOKAHEAD,BASE_SPEED)
 
                 case RobotState.TARGET_MODE:
