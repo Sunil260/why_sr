@@ -31,7 +31,7 @@ from gpiozero import Servo
     #     self.servo.close()
 
 class Claw:
-    def __init__(self, servo_pin=18, close_angle=10.0, open_angle=-90.0):
+    def __init__(self, servo_pin=18, close_angle=5.0, open_angle=-90.0):
         self.servo = Servo(servo_pin)
         #self.beam = BeamBreak(pin=beam_pin, debounce=beam_debounce)
 
