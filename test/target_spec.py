@@ -14,7 +14,7 @@ from controllers import TurnUntilLineController
 from enum import Enum
 
 # Controller gains
-BASE_SPEED = 0.2
+BASE_SPEED = 0.65
 #.45
 LOOKAHEAD = 75
 
@@ -32,7 +32,7 @@ def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_spee
     
     red_line_data = p.detect_red_line(frame, lookahead)
     p.show_line_debug(frame, red_line_data, lookahead)
-    blue = p.detect_target_cheap(frame, min_area=1500)
+    blue = p.detect_target_cheap(frame, min_area=2000)
 
     if not red_line_data.detected:
         print("Line lost")
@@ -150,7 +150,7 @@ def turn_until_line(p, frame, dt, drivebase, turn_controller):
 
     command = turn_controller.compute(red_line_data, dt)
 
-    drivebase.set_Velocity(0, 0.2)
+    drivebase.set_Velocity(0, 0.3)
 
     if not red_line_data.detected: #i want this to be less than a certain area of red but ok for now...
         print("No red detected → stop turn")
@@ -208,10 +208,10 @@ def main():
     lw_detected = False
     aligned = False
     target_aligner = AlignmentController(omega_max=0.2)
-    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=300,x_tol=0.05)
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=350,x_tol=0.05)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
-    line_follower = LineFollowingController(k_heading_slow=3, v_min=0.25, v_max=0.7, omega_max=0.3)
+    line_follower = LineFollowingController(k_heading_slow=5, v_min=0.25, v_max=0.7, omega_max=0.3)
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
     claw = Claw()
     turn_controller = TurnUntilLineController()
