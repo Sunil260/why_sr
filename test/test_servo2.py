@@ -34,7 +34,7 @@ from manipulator import Claw
 claw = Claw()
 
 try:
-    for angle in [-60, -30, 0, 10, 20, 30]:
+    for angle in [-90, 20]:
         print(f"Angle: {angle}")
         claw.set_angle(angle)
         time.sleep(1.5)

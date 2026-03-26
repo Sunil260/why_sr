@@ -17,7 +17,7 @@ from enum import Enum
 
 
 # Controller gains
-BASE_SPEED = 0.65
+BASE_SPEED = 0.45
 #.45
 LOOKAHEAD = 75
 
@@ -34,12 +34,13 @@ class RobotState(Enum):
     TURN = 5
     HOME = 6
     RECOVERY = 7
+    STOP = 8
 
 def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_speed):
     
     red_line_data = p.detect_red_line(frame, lookahead)
     p.show_line_debug(frame, red_line_data, lookahead)
-    blue = p.detect_target_cheap(frame, min_area=2500)
+    blue = p.detect_target_cheap(frame, min_area=1000)
 
     if not red_line_data.detected:
         print("Line lost")
@@ -50,15 +51,17 @@ def run_line_follow(p, frame, dt, drivebase, line_follower, lookahead, base_spee
     
     omega_history.append(command.omega)
 
-    print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
-    drivebase.set_Velocity(command.v, command.omega)
-
     if blue.detected and not home:
         print(f"found w {blue.bpx} px" f"output.detected={blue.detected}")
         drivebase.stop(coast = False)
         print("BRAKEEEEE")
+        return RobotState.STOP
+        # return RobotState.TARGET_MODE
 
-        return RobotState.TARGET_MODE
+    print(f"lin_v = {command.v:.2f} omega = {command.omega:.2f}")
+    drivebase.set_Velocity(command.v, command.omega)
+
+   
     
     return RobotState.LINE_FOLLOW
 
@@ -70,7 +73,7 @@ def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller
         target_history.append(result.error_x)  # store error_x for history
         if result.detected:
             print(
-                f"Aligning: detected={result.detected} "
+                f"Aligning to target : detected={result.detected} "
                 f"e_x={np.round(result.error_x, 2)} "
                 f"e_y={np.round(result.error_y, 2)} "
                 f"Blue area={np.round(result.area, 2)}"
@@ -117,14 +120,17 @@ def run_lego_align(p, frame, dt, drivebase, approach_controller):
 
     result = p.detect_legoman(frame)
 
+    print("in lego mode")
+
     if not result.detected:
         print("Lego not detected")
         drivebase.stop()
         return RobotState.LEGO_ALIGN
 
     print(
-        f"Lego: e_x={np.round(result.e_x,2)} "
+        f"Approaching Lego: e_x={np.round(result.e_x,2)} "
         f"y={np.round(result.centroid_y,2)}"
+
     )
 
     if result.centroid_y >= approach_controller.pickup_y:
@@ -140,6 +146,8 @@ def run_lego_align(p, frame, dt, drivebase, approach_controller):
         omega = np.sign(omega) * max(abs(omega), 0.2)
 
     drivebase.set_Velocity(command.v, omega)
+    print(f"Omega: {omega}"
+            f"Vel: command.v{ command.v}")
 
     # stop condition (same as controller)
     if command.v == 0.0 and command.omega == 0.0:
@@ -153,7 +161,6 @@ def grab_lego(claw):
 
     print("Grabbing Lego → closing claw")
     claw.close()           # close the claw
-    # time.sleep(0.5)        # optional small delay to ensure claw closes
     print("Gdone close")
     for i in range(10):
         omega_history.append(1)
@@ -208,29 +215,33 @@ def get_recovery_direction():
 
     # Option 1: average (smooth)
     avg = np.mean(omega_history)
-
-    # # Option 2 (better): majority vote on sign
-    # signs = np.sign(omega_history)
-    # vote = np.sum(signs)
-
-    # if abs(vote) > 0:
-    #     return np.sign(vote)
-
-    # fallback if tied/noisy
+ 
     return np.sign(avg) if abs(avg) > 0.01 else 1
+
+def stop_testing(drivebase):
+    drivebase.stop(coast=False)
+    print("Stopped")
+    time.sleep(2)
+    return RobotState.TARGET_MODE
 
 
 def main():
 
     cam = OpenCVCamera()
-    p = Perception(cam,False)
+    p = Perception(cam,True)
     lw_detected = False
     aligned = False
-    target_aligner = AlignmentController(omega_max=0.2)
-    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=350,x_tol=0.08)
+    target_aligner = AlignmentController(omega_max=0.18, x_tol=0.05)
+    target_aligner.align_pd.update_params(kp=0.25, kd = 0)
+    approach_targer = ApproachController(omega_max=0.2,v_max=0.15,pickup_y=400,x_tol=0.08)
+    approach_targer.lateral_pd.update_params(kp=0.05, kd=0.02)
     drivebase = DriveBase()
     # From red_line_follow.py setting same controller values
-    line_follower = LineFollowingController(k_heading_slow=5, v_min=0.25, v_max=0.7, omega_max=0.3)
+    # line_follower = LineFollowingController(k_heading_slow=5, v_min=0.25, v_max=0.7, omega_max=0.2)
+    # line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
+
+    line_follower = LineFollowingController(k_heading_slow=2, v_min=0.25, v_max=0.7, omega_max=0.15)
+
     line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
     claw = Claw()
     turn_controller = TurnUntilLineController()
@@ -271,6 +282,7 @@ def main():
 
                 case RobotState.INTAKE:
                     state = grab_lego(claw)
+                    home = True
 
                 case RobotState.TURN:
                     # pass
@@ -282,6 +294,9 @@ def main():
 
                 case RobotState.RECOVERY:
                     state = run_recovery(p, frame, drivebase)
+                
+                case RobotState.STOP:
+                    state = stop_testing(drivebase)
 
 
 
@@ -289,6 +304,7 @@ def main():
     except KeyboardInterrupt:
         print("Stopping robot")
         claw.open()
+        time.sleep(1)
 
 
     finally:
