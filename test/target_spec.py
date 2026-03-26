@@ -192,7 +192,7 @@ def run_recovery(p, frame, drivebase):
         return RobotState.LINE_FOLLOW
     
     elif red_line_data.detected and  home:
-        print("Line reacquired → back to line follow")
+        print("Homing mode back to line follow")
         drivebase.stop(coast=False)
         return RobotState.HOME
 
