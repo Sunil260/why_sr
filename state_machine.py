@@ -18,10 +18,8 @@ from controllers import (
 from drivebase import DriveBase
 from manipulator import Claw
 
-
-BASE_SPEED = 0.45
+BASE_SPEED = 0.3
 LOOKAHEAD = 75
-
 
 class RobotState(Enum):
     LINE_FOLLOW_OUTBOUND = auto()
@@ -32,7 +30,6 @@ class RobotState(Enum):
     LINE_FOLLOW_HOME = auto()
     RECOVERY = auto()
     STOP = auto()
-
 
 class RobotFSM:
     def __init__(self, p, drivebase, claw, line_follower, target_aligner, approach_controller):
@@ -78,22 +75,24 @@ class RobotFSM:
             print("Line lost")
             self.drivebase.stop()
             return RobotState.RECOVERY
-        blue_t = self.p.detect_target_cheap(frame, min_area=300)
+        
+        blue_t = self.p.detect_target_cheap(frame, min_area=20)
 
+        #
         if not self.has_object:
-            blue = self.p.detect_target_cheap(frame, min_area=1000)
+            blue = self.p.detect_target_cheap(frame, min_area=500)
             if blue.detected:
                 print(f"Target candidate found: {blue.bpx}px")
                 self.omega_history.clear()
                 self.drivebase.stop(coast=False)
-                return RobotState.ALIGN_TARGET
-        
-        
-        
+                return RobotState.LEGO_ALIGN
+    
         cmd = self.line_follower.compute(red, dt, BASE_SPEED)
         if hasattr(blue_t, "bpx") and blue_t.bpx > 600:
             cmd.v *= 0.5
             cmd.omega *= 0.25
+
+        print(f"Vel: {cmd.v} Omega: {cmd.omega}")
         self.omega_history.append(cmd.omega)
         self.drivebase.set_Velocity(cmd.v, cmd.omega)
 
@@ -116,8 +115,8 @@ class RobotFSM:
 
         cmd = self.target_aligner.compute(result, dt)
         omega = cmd.omega
-        # if abs(omega) > 0.01:
-        #     omega = np.sign(omega) * max(abs(omega), 0.2)
+        if abs(omega) > 0.01:
+            omega = np.sign(omega) * max(abs(omega), 0.18)
 
         self.drivebase.set_Velocity(0.0, omega)
         return RobotState.ALIGN_TARGET
@@ -130,14 +129,13 @@ class RobotFSM:
             self.drivebase.stop()
             return RobotState.LEGO_ALIGN
 
-        print(f"Lego: error_x={result.e_x:.2f}, y={result.centroid_y:.2f}")
+        print(f"Lego: error_x={result.e_x:.2f}, error_y={result.centroid_y:.2f}")
 
-        cmd = self.approach_controller.compute(result, dt)
-
-        if cmd.v == 0.0 and cmd.omega == 0.0:
+        if result.centroid_y >= self.approach_controller.pickup_y :
             self.drivebase.stop(coast=False)
             return RobotState.INTAKE
 
+        cmd = self.approach_controller.compute(result, dt)
         omega = cmd.omega
         if abs(omega) > 0.01:
             omega = np.sign(omega) * max(abs(omega), 0.2)
@@ -167,11 +165,11 @@ class RobotFSM:
             self.drivebase.stop(coast=False)
             return RobotState.LINE_FOLLOW_HOME
 
-        self.drivebase.set_Velocity(0.0, -0.3)
+        self.drivebase.set_Velocity(0.0, 0.3)
         return RobotState.TURN_TO_LINE
 
     def run_recovery(self, frame):
-        red = self.p.detect_red_line(frame, lookahead_y=100)
+        red = self.p.detect_red_line(frame, lookahead_y=LOOKAHEAD)
 
         if red.detected:
             self.drivebase.stop(coast=False)
@@ -206,21 +204,20 @@ class RobotFSM:
         elif self.state == RobotState.STOP:
             self.drivebase.stop(coast=False)
 
-
 def main():
     cam = OpenCVCamera()
     p = Perception(cam, False)
     drivebase = DriveBase()
     claw = Claw()
 
-    target_aligner = AlignmentController(omega_max=0.18, x_tol=0.05)
-    target_aligner.align_pd.update_params(kp=0.25, kd=0.0)
+    target_aligner = AlignmentController(omega_max=0.2, x_tol=0.02)
+    target_aligner.align_pd.update_params(kp=0.05, kd=0.0)
 
-    approach_controller = ApproachController(omega_max=0.2, v_max=0.15, pickup_y=300, x_tol=0.08)
-    approach_controller.lateral_pd.update_params(kp=0.05, kd=0.02)
+    approach_controller = ApproachController(omega_max=0.175, v_max=0.15, pickup_y=350, x_tol=0.08)
+    approach_controller.lateral_pd.update_params(kp=0.1, kd=0.02)
 
     line_follower = LineFollowingController(k_heading_slow=2, v_min=0.25, v_max=0.7, omega_max=0.15)
-    line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
+    line_follower.lateral_pd.update_params(kp=0.2, kd=0.04)
 
     fsm = RobotFSM(p, drivebase, claw, line_follower, target_aligner, approach_controller)
 
@@ -249,7 +246,6 @@ def main():
         cam.release()
         p.close_debug()
         cv2.destroyAllWindows()
-
 
 if __name__ == "__main__":
     main()

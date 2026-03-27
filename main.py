@@ -334,7 +334,7 @@ def main():
     except KeyboardInterrupt:
         print("Stopping robot")
         claw.open()
-        time.sleep(1)
+        time.sleep(0.5)
 
     finally:
         drivebase.stop()
