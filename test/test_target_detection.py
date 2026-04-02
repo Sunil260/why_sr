@@ -2,32 +2,37 @@ import cv2
 import sys
 import os
 import time
+import numpy as np
+from collections import deque
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from perception import OpenCVCamera, Perception
-from controllers import AlignmentController, ApproachController
-from controllers import LineFollowingController
+from controllers import AlignmentController
 from drivebase import DriveBase
-import numpy as np
 
+
+X_TOL = 0.02           # normalized
+OMEGA_MAX = 0.20
+KP_ALIGN = 1
+KD_ALIGN = 0.0
+
+USE_SMOOTHING = True
+SMOOTH_WINDOW = 5
+
+USE_MIN_TURN = True
+MIN_TURN_OMEGA = 0.2
 
 
 def main():
-
     cam = OpenCVCamera()
-    p = Perception(cam,False)
-    lw_detected = False
-
-    aligned = False
-    target_aligner = AlignmentController()
-    green_aligner = AlignmentController()
-    approach_targer = ApproachController()
+    p = Perception(cam, True)
     drivebase = DriveBase()
-    # From red_line_follow.py setting same controller values
-    line_follower = LineFollowingController(k_heading_slow=0, v_min=0.25, v_max=0.7, omega_max=0.15)
-    line_follower.lateral_pd.update_params(kp=0.2, kd=0.02)
 
+    target_aligner = AlignmentController(omega_max=OMEGA_MAX, x_tol=X_TOL)
+    target_aligner.align_pd.update_params(kp=KP_ALIGN, kd=KD_ALIGN)
 
+    error_hist = deque(maxlen=SMOOTH_WINDOW)
 
     try:
         prev_t = time.monotonic()
@@ -38,75 +43,51 @@ def main():
             prev_t = now
 
             frame = cam.get_frame()
-            
-            if lw_detected is not True:
+            result = p.analyze_target(frame)
 
+            if not result.detected:
+                print("Target not detected")
+                drivebase.stop(coast=False)
 
-                output = p.detect_target_cheap(frame,min_area=1500)
-                if output.detected:
-                    print(f"found w {output.bpx} px" f"output.detected={output.detected}")
-                    lw_detected = True
-                    drivebase.stop()
-                    cv2.destroyAllWindows()
-                    continue #skip rest of loop
+            else:
+                error_x = result.error_x
+
+                if USE_SMOOTHING:
+                    error_hist.append(error_x)
+                    error_x = float(np.mean(error_hist))
                 else:
-                    print(f"Not FOUND w {output.bpx} px" f"output.detected={output.detected}")
-            
-# khush updates, need review --> moving to a separate file
-            # if lw_detected is not True:
+                    error_hist.clear()
 
-            #     output = p.detect_target_cheap(frame)
-            #     if output.detected:
-            #         print(f"found w {output.bpx} px" f"output.detected={output.detected}")
-            #         lw_detected = True
-            #         drivebase.stop()
-            #         cv2.destroyAllWindows()
-            #         continue #skip rest of loop
-            #     else:
-            #         print(f"Not FOUND w {output.bpx} px" f"output.detected={output.detected}")
-# end of khush updates
-            
-            if (lw_detected):
-                
-                if not aligned:
-                    
-                    # result = p.detect_green_box(frame) #detect green box
-                    result = p.analyze_target(frame)
-                    # TargetEstimate(detected=True, centroid_x=red_cx, centroid_y=red_cy, area=blue_w * blue_h, error_x=error_x, error_y=error_y)
-                    if result.detected:
-                        print(
-                            f"{result.detected} "
-                            f"e_x = {np.round(result.error_x,2 )} "
-                            f"e_y = {np.round(result.error_y,2)} "
-                            f"Green area = {np.round(result.area,2)} "
-                        )
-                        if abs(result.error_x) < green_aligner.x_tol:
-                            aligned = True
+                print(
+                    f"detected={result.detected} "
+                    f"error_x={error_x:+.3f} "
+                    f"error_y={result.error_y:+.3f} "
+                    f"area={result.area:.1f}"
+                )
 
-                        command = green_aligner.compute(result, dt)
-                        print(command.v, command.omega)
-                        omega = command.omega
+                result.error_x = error_x
 
-                        if abs(omega) < 0.15:
-                            omega = 0.0
-                        
-                        # p.show_green_debug(frame, p.last_green_mask, result, command.v, omega)
+                if abs(result.error_x) < target_aligner.x_tol:
+                    print("Aligned -> stop")
+                    drivebase.stop(coast=False)
 
+                else:
+                    cmd = target_aligner.compute(result, dt)
+                    omega = cmd.omega
 
-                        drivebase.set_Velocity(command.v, omega)
-                                
-                else: 
-                    #approach control
-                    drivebase.stop()
-                    result = p.detect_legoman(frame)
-                    if result.detected:
-                        print(
-                            f"{result.detected} "
-                            f"e_x = {np.round(result.e_x,2 )} "
-                            f"e_y = {np.round(result.e_y,2)} "
-                            f"head area =  {np.round(result.area,2)} "
-                        )
-    
+                    # Only use this if the motor deadband is a real problem.
+                    # Keep it small or it will overshoot near center.
+                    if USE_MIN_TURN and abs(omega) > 0.01 and abs(result.error_x) > 3 * target_aligner.x_tol:
+                        omega = np.sign(omega) * max(abs(omega), MIN_TURN_OMEGA)
+
+                    omega = max(-target_aligner.omega_max, min(target_aligner.omega_max, omega))
+
+                    print(f"command: v=0.00 omega={omega:+.3f}")
+                    drivebase.set_Velocity(0.0, omega)
+
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
     except KeyboardInterrupt:
         print("Stopping robot")
 
@@ -115,6 +96,7 @@ def main():
         cam.release()
         p.close_debug()
         cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     main()

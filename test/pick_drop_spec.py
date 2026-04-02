@@ -139,6 +139,7 @@ def main():
 
 
     prev_t = time.monotonic()
+    Claw.open()
 
     try:
 

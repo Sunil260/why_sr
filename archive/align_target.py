@@ -12,8 +12,8 @@ import numpy as np
 from enum import Enum
 
 # Controller gains
-BASE_SPEED = 0.3
-LOOKAHEAD = 50
+BASE_SPEED = 0.45
+LOOKAHEAD = 75
 
 
 def run_target_mode(p, frame, dt, drivebase, target_aligner, approach_controller, aligned):

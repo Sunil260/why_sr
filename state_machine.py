@@ -1,381 +1,251 @@
-'''
-Brain of the S&R robot
-- State machine to manage the different states of the robot and the transitions between them
-- various controllers and perception modules will be used in different states to achieve the desired behavior
-'''
-
-from enum import Enum, auto
-from dataclasses import dataclass
+import cv2
+import sys
+import os
 import time
+from collections import deque
+from enum import Enum, auto
 
+import numpy as np
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from perception import OpenCVCamera, Perception
 from controllers import (
-    DriveCommand,
-    LineEstimate,
-    TargetEstimate,
-    SafeZoneEstimate,
+    AlignmentController,
+    ApproachController,
+    LineFollowingController,
 )
+from drivebase import DriveBase
+from manipulator import Claw
 
+BASE_SPEED = 0.3
+LOOKAHEAD = 75
 
 class RobotState(Enum):
-    INIT = auto()
-    ACQUIRE_LINE = auto()
-
-    FOLLOW_PATH_TO_TARGET = auto()
-    ALIGN_TO_TARGET = auto()
-    APPROACH_TARGET = auto()
-    PICKUP_TARGET = auto()
-
-    FOLLOW_PATH_TO_SAFE_ZONE = auto()
-    ALIGN_TO_SAFE_ZONE = auto()
-    APPROACH_SAFE_ZONE = auto()
-    DROP_TARGET = auto()
-
-    FOLLOW_PATH_HOME = auto()
-    STOP = auto()
+    LINE_FOLLOW_OUTBOUND = auto()
+    ALIGN_TARGET = auto()
+    LEGO_ALIGN = auto()
+    INTAKE = auto()
+    TURN_TO_LINE = auto()
+    LINE_FOLLOW_HOME = auto()
     RECOVERY = auto()
+    STOP = auto()
 
-
-@dataclass
-class PerceptionBundle:
-    line: LineEstimate
-    target: TargetEstimate
-    safe_zone: SafeZoneEstimate
-
-
-class StateMachine:
-    def __init__(
-        self,
-        drivebase,
-        claw,
-        line_controller,
-        align_controller,
-        approach_controller,
-        turn_until_line_controller,
-    ):
+class RobotFSM:
+    def __init__(self, p, drivebase, claw, line_follower, target_aligner, approach_controller):
+        self.p = p
         self.drivebase = drivebase
         self.claw = claw
 
-        self.line_controller = line_controller
-        self.align_controller = align_controller
+        self.line_follower = line_follower
+        self.target_aligner = target_aligner
         self.approach_controller = approach_controller
-        self.turn_until_line_controller = turn_until_line_controller
 
-        self.state = RobotState.INIT
-        self.prev_state = None
-
-        self.state_start_time = time.monotonic()
-        self.retry_count = 0
-        self.max_retries = 3
-
+        self.state = RobotState.LINE_FOLLOW_OUTBOUND
         self.has_object = False
-        self.mission_complete = False
 
-        # Detection debouncing / filtering
-        self.target_detect_count = 0
-        self.safe_zone_detect_count = 0
-        self.line_detect_count = 0
+        self.omega_history = deque(maxlen=10)
+        self.target_history = deque(maxlen=10)
 
-        self.target_detect_threshold = 3
-        self.safe_zone_detect_threshold = 3
-        self.line_detect_threshold = 2
+        self.intake_start = None
+        self.intake_duration = 0.6
 
-        # Tunable thresholds
-        self.target_align_tol_px = 20
-        self.safe_zone_align_tol_px = 20
-
-        self.target_area_approach_threshold = 3500
-        self.safe_zone_area_approach_threshold = 5000
-
-        self.pickup_time_s = 0.6
-        self.drop_time_s = 0.6
-
-        self.recovery_turn_direction = 1.0  # +1 or -1
-
-    # ---------- Utility ----------
-
-    def reset_detection_counters(self):
-        self.target_detect_count = 0
-        self.safe_zone_detect_count = 0
-        self.line_detect_count = 0
-
-    def reset_controllers(self):
-        # Add reset() methods to your task controllers if needed
-        if hasattr(self.line_controller, "lateral_pd"):
-            self.line_controller.lateral_pd.reset()
-
-        if hasattr(self.align_controller, "align_pd"):
-            self.align_controller.align_pd.reset()
-
-        if hasattr(self.approach_controller, "heading_pd"):
-            self.approach_controller.heading_pd.reset()
-
-    def transition_to(self, new_state: RobotState):
-        self.prev_state = self.state
+    def transition(self, new_state):
+        if new_state != self.state:
+            print(f"[FSM] {self.state.name} -> {new_state.name}")
         self.state = new_state
-        self.state_start_time = time.monotonic()
-        self.reset_controllers()
-        self.reset_detection_counters()
-        print(f"[FSM] {self.prev_state} -> {self.state}")
 
-    def time_in_state(self) -> float:
-        return time.monotonic() - self.state_start_time
+        if new_state != RobotState.ALIGN_TARGET:
+            self.target_history.clear()
 
-    def stop_robot(self):
-        self.drivebase.set_velocity(0.0, 0.0)
+        if new_state != RobotState.INTAKE:
+            self.intake_start = None
 
-    def apply_drive_command(self, cmd: DriveCommand):
-        self.drivebase.set_velocity(cmd.v, cmd.omega)
+    def get_recovery_direction(self):
+        if not self.omega_history:
+            return 1.0
+        avg = np.mean(self.omega_history)
+        return np.sign(avg) if abs(avg) > 0.01 else 1.0
 
-    def target_seen_consistently(self, target_est: TargetEstimate) -> bool:
-        if target_est.detected:
-            self.target_detect_count += 1
-        else:
-            self.target_detect_count = 0
-        return self.target_detect_count >= self.target_detect_threshold
+    def run_line_follow(self, frame, dt):
+        red = self.p.detect_red_line(frame, LOOKAHEAD)
+        self.p.show_line_debug(frame, red, LOOKAHEAD)
 
-    def safe_zone_seen_consistently(self, safe_est: SafeZoneEstimate) -> bool:
-        if safe_est.detected:
-            self.safe_zone_detect_count += 1
-        else:
-            self.safe_zone_detect_count = 0
-        return self.safe_zone_detect_count >= self.safe_zone_detect_threshold
+        if not red.detected:
+            print("Line lost")
+            self.drivebase.stop()
+            return RobotState.RECOVERY
+        
+        blue_t = self.p.detect_target_cheap(frame, min_area=20)
 
-    def line_seen_consistently(self, line_est: LineEstimate) -> bool:
-        if line_est.detected:
-            self.line_detect_count += 1
-        else:
-            self.line_detect_count = 0
-        return self.line_detect_count >= self.line_detect_threshold
+        #
+        if not self.has_object:
+            blue = self.p.detect_target_cheap(frame, min_area=500)
+            if blue.detected:
+                print(f"Target candidate found: {blue.bpx}px")
+                self.omega_history.clear()
+                self.drivebase.stop(coast=False)
+                return RobotState.LEGO_ALIGN
+    
+        cmd = self.line_follower.compute(red, dt, BASE_SPEED)
+        if hasattr(blue_t, "bpx") and blue_t.bpx > 600:
+            cmd.v *= 0.5
+            cmd.omega *= 0.25
 
-    # ---------- Main FSM update ----------
+        print(f"Vel: {cmd.v} Omega: {cmd.omega}")
+        self.omega_history.append(cmd.omega)
+        self.drivebase.set_Velocity(cmd.v, cmd.omega)
 
-    def update(self, perception: PerceptionBundle, dt: float):
-        """
-        Call this every loop.
-        It decides what command to send to the drivebase / claw.
-        """
+        return self.state
 
-        line_est = perception.line
-        target_est = perception.target
-        safe_est = perception.safe_zone
+    def run_align_target(self, frame, dt):
+        result = self.p.analyze_target(frame)
 
-        # ---------------- INIT ----------------
-        if self.state == RobotState.INIT:
-            self.stop_robot()
-            self.transition_to(RobotState.ACQUIRE_LINE)
-            return
+        if not result.detected:
+            print("Blue target not detected")
+            self.drivebase.stop()
+            return RobotState.ALIGN_TARGET
 
-        # ---------------- ACQUIRE_LINE ----------------
-        elif self.state == RobotState.ACQUIRE_LINE:
-            if self.line_seen_consistently(line_est):
-                self.transition_to(RobotState.FOLLOW_PATH_TO_TARGET)
-                self.stop_robot()
-                return
+        self.target_history.append(result.error_x)
+        result.error_x = float(np.mean(self.target_history))
 
-            if self.time_in_state() > 5.0:
-                self.transition_to(RobotState.RECOVERY)
-                return
+        if abs(result.error_x) < self.target_aligner.x_tol:
+            self.drivebase.stop(coast=False)
+            return RobotState.LEGO_ALIGN
 
-            cmd = self.turn_until_line_controller.compute(line_est, dt)
-            self.apply_drive_command(cmd)
-            return
+        cmd = self.target_aligner.compute(result, dt)
+        omega = cmd.omega
+        if abs(omega) > 0.01:
+            omega = np.sign(omega) * max(abs(omega), 0.18)
 
-        # ---------------- FOLLOW_PATH_TO_TARGET ----------------
-        elif self.state == RobotState.FOLLOW_PATH_TO_TARGET:
-            if not line_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.RECOVERY)
-                    return
+        self.drivebase.set_Velocity(0.0, omega)
+        return RobotState.ALIGN_TARGET
 
-            if self.target_seen_consistently(target_est):
-                self.transition_to(RobotState.ALIGN_TO_TARGET)
-                self.stop_robot()
-                return
+    def run_lego_align(self, frame, dt):
+        result = self.p.detect_legoman(frame)
 
-            cmd = self.line_controller.compute(line_est, dt)
-            self.apply_drive_command(cmd)
-            return
+        if not result.detected:
+            print("Lego not detected")
+            self.drivebase.stop()
+            return RobotState.LEGO_ALIGN
 
-        # ---------------- ALIGN_TO_TARGET ----------------
-        elif self.state == RobotState.ALIGN_TO_TARGET:
-            if not target_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.FOLLOW_PATH_TO_TARGET)
-                    return
+        print(f"Lego: error_x={result.e_x:.2f}, error_y={result.centroid_y:.2f}")
 
-            if target_est.detected and abs(target_est.error_x) <= self.target_align_tol_px:
-                self.transition_to(RobotState.APPROACH_TARGET)
-                self.stop_robot()
-                return
+        if result.centroid_y >= self.approach_controller.pickup_y :
+            self.drivebase.stop(coast=False)
+            return RobotState.INTAKE
 
-            if self.time_in_state() > 4.0:
-                self.transition_to(RobotState.RECOVERY)
-                return
+        cmd = self.approach_controller.compute(result, dt)
+        omega = cmd.omega
+        if abs(omega) > 0.01:
+            omega = np.sign(omega) * max(abs(omega), 0.2)
 
-            cmd = self.align_controller.compute(target_est, dt)
-            self.apply_drive_command(cmd)
-            return
+        self.drivebase.set_Velocity(cmd.v, omega)
+        return RobotState.LEGO_ALIGN
 
-        # ---------------- APPROACH_TARGET ----------------
-        elif self.state == RobotState.APPROACH_TARGET:
-            if not target_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.ALIGN_TO_TARGET)
-                    return
+    def run_intake(self, now):
+        if self.intake_start is None:
+            self.intake_start = now
+            print("Closing claw")
+            self.claw.close()
 
-            # Option 1: beam break confirms pickup position reached
-            # Option 2: area threshold means target is close enough
-            if self.claw.is_object_detected() or (
-                target_est.detected and target_est.area >= self.target_area_approach_threshold
-            ):
-                self.transition_to(RobotState.PICKUP_TARGET)
-                self.stop_robot()
-                return
+        if now - self.intake_start >= self.intake_duration:
+            self.has_object = True
+            self.omega_history.clear()
+            self.omega_history.extend([1.0] * 10)
+            return RobotState.TURN_TO_LINE
 
-            if self.time_in_state() > 5.0:
-                self.transition_to(RobotState.RECOVERY)
-                return
+        return RobotState.INTAKE
 
-            cmd = self.approach_controller.compute(target_est, dt)
-            self.apply_drive_command(cmd)
-            return
+    def run_turn_to_line(self, frame):
+        red = self.p.detect_red_line(frame, lookahead_y=100)
 
-        # ---------------- PICKUP_TARGET ----------------
-        elif self.state == RobotState.PICKUP_TARGET:
-            self.stop_robot()
+        if red.detected:
+            print("Line found again")
+            self.drivebase.stop(coast=False)
+            return RobotState.LINE_FOLLOW_HOME
 
-            # Very simple timed pickup logic
-            if self.time_in_state() < 0.05:
-                self.claw.close()
+        self.drivebase.set_Velocity(0.0, 0.3)
+        return RobotState.TURN_TO_LINE
 
-            if self.time_in_state() > self.pickup_time_s:
-                if self.claw.is_object_detected():
-                    self.has_object = True
-                    self.transition_to(RobotState.FOLLOW_PATH_TO_SAFE_ZONE)
-                else:
-                    # Failed pickup
-                    self.retry_count += 1
-                    if self.retry_count > self.max_retries:
-                        self.transition_to(RobotState.RECOVERY)
-                    else:
-                        self.transition_to(RobotState.ALIGN_TO_TARGET)
-                return
+    def run_recovery(self, frame):
+        red = self.p.detect_red_line(frame, lookahead_y=LOOKAHEAD)
 
-            return
+        if red.detected:
+            self.drivebase.stop(coast=False)
+            return RobotState.LINE_FOLLOW_HOME if self.has_object else RobotState.LINE_FOLLOW_OUTBOUND
 
-        # ---------------- FOLLOW_PATH_TO_SAFE_ZONE ----------------
-        elif self.state == RobotState.FOLLOW_PATH_TO_SAFE_ZONE:
-            if not line_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.RECOVERY)
-                    return
+        omega = self.get_recovery_direction() * 0.2
+        self.drivebase.set_Velocity(0.0, omega)
+        return RobotState.RECOVERY
 
-            if self.safe_zone_seen_consistently(safe_est):
-                self.transition_to(RobotState.ALIGN_TO_SAFE_ZONE)
-                self.stop_robot()
-                return
+    def step(self, frame, dt, now):
+        if self.state == RobotState.LINE_FOLLOW_OUTBOUND:
+            self.transition(self.run_line_follow(frame, dt))
 
-            cmd = self.line_controller.compute(line_est, dt)
-            self.apply_drive_command(cmd)
-            return
+        elif self.state == RobotState.ALIGN_TARGET:
+            self.transition(self.run_align_target(frame, dt))
 
-        # ---------------- ALIGN_TO_SAFE_ZONE ----------------
-        elif self.state == RobotState.ALIGN_TO_SAFE_ZONE:
-            if not safe_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.FOLLOW_PATH_TO_SAFE_ZONE)
-                    return
+        elif self.state == RobotState.LEGO_ALIGN:
+            self.transition(self.run_lego_align(frame, dt))
 
-            if safe_est.detected and abs(safe_est.error_x) <= self.safe_zone_align_tol_px:
-                self.transition_to(RobotState.APPROACH_SAFE_ZONE)
-                self.stop_robot()
-                return
+        elif self.state == RobotState.INTAKE:
+            self.transition(self.run_intake(now))
 
-            if self.time_in_state() > 4.0:
-                self.transition_to(RobotState.RECOVERY)
-                return
+        elif self.state == RobotState.TURN_TO_LINE:
+            self.transition(self.run_turn_to_line(frame))
 
-            # reuse alignment controller
-            cmd = self.align_controller.compute(safe_est, dt)
-            self.apply_drive_command(cmd)
-            return
+        elif self.state == RobotState.LINE_FOLLOW_HOME:
+            self.transition(self.run_line_follow(frame, dt))
 
-        # ---------------- APPROACH_SAFE_ZONE ----------------
-        elif self.state == RobotState.APPROACH_SAFE_ZONE:
-            if not safe_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.ALIGN_TO_SAFE_ZONE)
-                    return
-
-            if safe_est.detected and safe_est.area >= self.safe_zone_area_approach_threshold:
-                self.transition_to(RobotState.DROP_TARGET)
-                self.stop_robot()
-                return
-
-            if self.time_in_state() > 5.0:
-                self.transition_to(RobotState.RECOVERY)
-                return
-
-            # Reuse approach controller if it supports SafeZoneEstimate too
-            cmd = self.approach_controller.compute(safe_est, dt)
-            self.apply_drive_command(cmd)
-            return
-
-        # ---------------- DROP_TARGET ----------------
-        elif self.state == RobotState.DROP_TARGET:
-            self.stop_robot()
-
-            if self.time_in_state() < 0.05:
-                self.claw.open()
-
-            if self.time_in_state() > self.drop_time_s:
-                self.has_object = False
-                self.transition_to(RobotState.FOLLOW_PATH_HOME)
-                return
-
-            return
-
-        # ---------------- FOLLOW_PATH_HOME ----------------
-        elif self.state == RobotState.FOLLOW_PATH_HOME:
-            if not line_est.detected:
-                if self.time_in_state() > 1.0:
-                    self.transition_to(RobotState.RECOVERY)
-                    return
-
-            # Placeholder:
-            # Replace this with your actual "home reached" logic,
-            # e.g. start marker detection / wide horizontal line / timed return / odometry flag.
-            home_reached = False
-
-            if home_reached:
-                self.transition_to(RobotState.STOP)
-                self.stop_robot()
-                return
-
-            cmd = self.line_controller.compute(line_est, dt)
-            self.apply_drive_command(cmd)
-            return
-
-        # ---------------- RECOVERY ----------------
         elif self.state == RobotState.RECOVERY:
-            # Simple fallback behavior:
-            # rotate slowly until line is found again
-            if line_est.detected:
-                if self.has_object:
-                    self.transition_to(RobotState.FOLLOW_PATH_TO_SAFE_ZONE)
-                else:
-                    self.transition_to(RobotState.FOLLOW_PATH_TO_TARGET)
-                return
+            self.transition(self.run_recovery(frame))
 
-            if self.time_in_state() > 6.0:
-                self.transition_to(RobotState.STOP)
-                return
-
-            self.apply_drive_command(DriveCommand(v=0.0, omega=0.6 * self.recovery_turn_direction))
-            return
-
-        # ---------------- STOP ----------------
         elif self.state == RobotState.STOP:
-            self.stop_robot()
-            self.mission_complete = True
-            return
+            self.drivebase.stop(coast=False)
+
+def main():
+    cam = OpenCVCamera()
+    p = Perception(cam, False)
+    drivebase = DriveBase()
+    claw = Claw()
+
+    target_aligner = AlignmentController(omega_max=0.2, x_tol=0.02)
+    target_aligner.align_pd.update_params(kp=0.05, kd=0.0)
+
+    approach_controller = ApproachController(omega_max=0.175, v_max=0.15, pickup_y=350, x_tol=0.08)
+    approach_controller.lateral_pd.update_params(kp=0.1, kd=0.02)
+
+    line_follower = LineFollowingController(k_heading_slow=2, v_min=0.25, v_max=0.7, omega_max=0.15)
+    line_follower.lateral_pd.update_params(kp=0.2, kd=0.04)
+
+    fsm = RobotFSM(p, drivebase, claw, line_follower, target_aligner, approach_controller)
+
+    prev_t = time.monotonic()
+    claw.open()
+
+    try:
+        while True:
+            now = time.monotonic()
+            dt = now - prev_t
+            prev_t = now
+
+            frame = cam.get_frame()
+            fsm.step(frame, dt, now)
+
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
+    except KeyboardInterrupt:
+        print("Stopping robot")
+        claw.open()
+        time.sleep(1)
+
+    finally:
+        drivebase.stop()
+        cam.release()
+        p.close_debug()
+        cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
